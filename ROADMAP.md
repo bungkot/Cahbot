@@ -33,20 +33,21 @@ Status: ✅ *(done — v2 mockup revision approved; e2e 5/5 green in the dev con
   - ✅ all met: v2 mockup approved ("ok tutup Sprint 1"), e2e 5/5 green, ADR D6-update written; quality gate green (ruff/format/mypy strict + 11 unit + 5 e2e).
 
 ## Sprint 2 — Ingest pipeline (target: 3–5 working days)
-Status: ☐ todo
+Status: ✅ done — all KRs green (ruff/format/mypy strict + 11 unit + 7 integration + smoke LULUS: POST /ingest real ONNX e5 → pgvector; `scripts/smoke.sh` created)
 - **KR-1 Parser & chunker** — `infrastructure/parsers/`: PDF (PyMuPDF4LLM), docx/xlsx/pptx/md (MarkItDown); `Chunker` token-based ~512 tok, overlap 64, never split headings/tables.
   - [x] `DocumentParser`, `Chunker` interfaces (ports)
-  - [ ] implement parser per file type + fallback for unknown extensions
-  - [ ] chunker + boundary unit tests (complex pages, tables, markdown)
+  - [x] implement parser per file type + fallback for unknown extensions
+  - [x] chunker + boundary unit tests (complex pages, tables, markdown)
 - **KR-2 ONNX embedder** — `infrastructure/onnx_embedder.py` (e5-small, `query:`/`passage:` prefixes, batch 32, `asyncio.to_thread`).
-  - [ ] implement + lazy load + warm-up in the lifespan
-  - [ ] dim assertion == 384 (golden rule #3) + tokenizer cache tolerance
+  - [x] implement + lazy load + warm-up in the lifespan (+ `models/multilingual-e5-small.onnx` + `tokenizer.json` provisioned on host)
+  - [x] dim assertion == 384 (golden rule #3) + tokenizer cache tolerance
 - **KR-3 Ingest worker** — `adapters/worker/watchdog_runner.py`: watch `data/inbox/` → `pending` rows in `ingest_jobs` → poll done/failed; max 2 retries; Windows → POSIX path normalisation; a large file must never stop the worker (per-file try/except).
-  - [ ] Watchdog assembly → `IngestUseCase`
-  - [ ] idempotency tested (same hash → upsert no-op; different hash → replace chunks)
+  - [x] Watchdog assembly → `IngestUseCase` (in-process lifespan task, ADR D5; `ingest_jobs.attempts` via migration 002)
+  - [x] idempotency tested (same hash → upsert no-op; different hash → replace chunks)
 - **KR-4 `/ingest` router** — job status (synchronous POST for the MVP; polling status endpoint), Pydantic response models.
 - **KR-5 Tests** — unit (chunker boundaries, domain idempotency) + `integration` (Postgres container, ingest e2e with 1 small PDF).
 - **Definition of done**: dropping 3 file types → all indexed in `chunks` with `heading`/`page` metadata; bad files end `failed` without taking the worker down; `make check-all` green.
+  - ✅ all met: smoke PDF tersimpan dengan `heading: "Dasar Cuti"` + `page: 1` + model `multilingual-e5-small`; file pecah → IngestError → job `failed` + retry 2× masih membiarkan worker hidup; `make check-all` + integration hijau.
 
 ## Sprint 3 — Production-grade retrieval (target: 3–4 days)
 Status: ☐ todo

@@ -31,7 +31,15 @@ class Settings(BaseSettings):
 
     # --- Embeddings ---
     embed_model_path: str = "/models/multilingual-e5-small.onnx"
+    embed_tokenizer_path: str = ""  # kosong → tokenizer.json sebelah file model
     embed_batch_size: int = Field(default=32, ge=1)
+    embed_max_seq_tokens: int = Field(default=256, ge=32)
+    embed_threads: int = Field(default=2, ge=1)
+
+    # --- Ingest worker ---
+    ingest_inbox_path: str = "/data/inbox"
+    ingest_poll_interval_s: float = Field(default=2.0, gt=0)
+    ingest_max_attempts: int = Field(default=2, ge=1)
 
     # --- Retrieval ---
     retriever_top_k: int = Field(default=4, ge=1)

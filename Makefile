@@ -11,7 +11,7 @@ RUN     = $(PROF) run --rm dev      # pemanggilan sekali-jalan (tooling)
 EXEC    = $(PROF) exec dev          # ke service `dev` yang sedang berjalan
 
 .PHONY: up up-prod down dev-build logs shell lint typecheck test test-all test-e2e \
-        check-all playwright-install smoke eval db-shell backup restore mem app
+        check-all playwright-install smoke eval db-shell db-migrate backup restore mem app
 
 # --- lifecycle ---
 up:          # dev stack: db + dev tooling (kode di-mount)
@@ -63,6 +63,12 @@ eval:
 	$(RUN) uv run python src/eval/run_eval.py
 
 # --- db ---
+db-migrate:   # terapkan db/migrations/*.sql berurutan (psql di container db)
+	@for f in db/migrations/*.sql; do \
+		echo "apply $$f"; \
+		cat "$$f" | $(DC) exec -T db psql -U "$${DB_USER:-rag}" -d "$${DB_NAME:-rag}" -v ON_ERROR_STOP=1; \
+	done
+
 db-shell:
 	$(DC) exec db psql -U "$${DB_USER:-rag}" -d "$${DB_NAME:-rag}"
 

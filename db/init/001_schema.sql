@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS ingest_jobs (
     id          BIGSERIAL PRIMARY KEY,
     path        TEXT NOT NULL,
     status      TEXT NOT NULL DEFAULT 'pending',  -- pending|running|done|failed
+    attempts    INT NOT NULL DEFAULT 0,           -- retry counter (migrations/002)
     error       TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()

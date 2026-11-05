@@ -10,6 +10,7 @@ dependencies = [
     # environment and Docker availability. Do not guess versions here.
     "fastapi",
     "uvicorn",
+    "python-multipart",
     "pydantic-settings",
     "structlog",
     "langchain-core",
@@ -17,6 +18,8 @@ dependencies = [
     "langchain-community",
     "llama-cpp-python",
     "onnxruntime",
+    "numpy",
+    "tokenizers",
     "asyncpg",
     "watchdog",
     "pymupdf4llm",
@@ -46,6 +49,7 @@ dev = [
 app = [
     "fastapi",
     "uvicorn",
+    "python-multipart",
     "pydantic-settings",
     "structlog",
     "langchain-core",
@@ -53,6 +57,8 @@ app = [
     "langchain-community",
     "llama-cpp-python",
     "onnxruntime",
+    "numpy",
+    "tokenizers",
     "asyncpg",
     "watchdog",
     "pymupdf4llm",
@@ -92,6 +98,11 @@ disable_error_code = []
 [[tool.mypy.overrides]]
 # asyncpg belum menyertakan py.typed/stubs resmi
 module = ["asyncpg.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Pakej tanpa py.typed: onnxruntime, pymupdf(+4llm), watchdog.observers (Observer dinamis)
+module = ["onnxruntime.*", "pymupdf.*", "pymupdf4llm.*", "watchdog.observers.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

@@ -8,7 +8,7 @@ Source-of-truth schema: `db/init/001_schema.sql` (fresh-init; ongoing changes �
 |---|---|---|
 | `documents` | one row per indexed file | `source UNIQUE`; `content_hash` for ingest idempotency |
 | `chunks` | text chunk + embedding + tsv | `halfvec(384)` **locked**; `tsv` generated (config read from `_fts_config`) |
-| `ingest_jobs` | ingest job queue | status `pending→running→done/failed`; index `(status, created_at)` |
+| `ingest_jobs` | ingest job queue | status `pending→running→done/failed`; `attempts` retry counter (max 2 — migrations/002); index `(status, created_at)` |
 | `chat_sessions` / `chat_messages` | conversation history | cascade delete per session |
 | `_fts_config` | consolidated FTS language config | read by the application; never hardcode in Python |
 

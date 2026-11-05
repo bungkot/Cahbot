@@ -10,11 +10,20 @@ from __future__ import annotations
 from typing import Protocol
 
 from app.domain.chat import RetrievedContext
-from app.domain.documents import Chunk, ParsedDocument
+from app.domain.documents import Chunk, IngestJob, ParsedDocument
 
 
 class Embedder(Protocol):
     """Embedding lokal ONNX (e5-small, 384d) — implementasi: infrastructure/onnx_embedder."""
+
+    @property
+    def model_name(self) -> str:
+        """Nama model disimpan ke metadata chunk (konvensi data-model.md)."""
+        ...
+
+    async def warm_up(self) -> None:
+        """Muat model + cek dimensi sekali di lifespan (komposisi startup)."""
+        ...
 
     async def embed_query(self, text: str) -> list[float]:
         """Embed pertanyaan (prefix `query:` — syarat model e5)."""
@@ -46,9 +55,40 @@ class VectorRepository(Protocol):
         content_hash: str,
         chunks: list[Chunk],
         vectors: list[list[float]],
+        metadata: list[dict[str, str | int | None]] | None = None,
     ) -> None:
-        """Idempoten: documents upsert pada source; ganti chunk bila hash berubah."""
+        """Idempoten: hash sama → no-op; berbeda → hapus chunk lama + tulis baru.
+
+        1 transaksi penuh — SEMUA chunk dikirim sekali panggil (bukan per batch).
+        """
         ...
+
+
+class IngestJobStore(Protocol):
+    """Antrean ingest di tabel `ingest_jobs` (implementasi: infrastructure/postgres/jobs)."""
+
+    async def enqueue(self, path: str) -> int:
+        """Tambah job `pending` untuk path (POSIX, relatif ke folder inbox)."""
+        ...
+
+    async def claim_pending(self) -> IngestJob | None:
+        """Ambil 1 job `pending` teratas → `running` (FOR UPDATE SKIP LOCKED)."""
+        ...
+
+    async def mark_done(self, job_id: int) -> None:
+        """Tandai job selesai."""
+        ...
+
+    async def mark_failed_or_retry(self, job_id: int, error: str, *, max_attempts: int) -> bool:
+        """attempts+1; requeue `pending` bila attempts < max_attempts, lain `failed`.
+
+        Kembalikan True bila job di-requeue, False bila berstatus gagal final.
+        """
+        ...
+
+    async def get_job(self, job_id: int) -> IngestJob | None: ...
+
+    async def list_jobs(self, limit: int = 50) -> list[IngestJob]: ...
 
 
 class DocumentParser(Protocol):

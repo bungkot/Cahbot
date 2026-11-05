@@ -10,6 +10,13 @@ pytestmark = pytest.mark.unit
 
 
 class _StubEmbedder:
+    @property
+    def model_name(self) -> str:
+        return "stub"
+
+    async def warm_up(self) -> None:
+        return None
+
     async def embed_query(self, text: str) -> list[float]:
         return []
 
@@ -34,6 +41,7 @@ class _StubRepository:
         content_hash: str,
         chunks: list[Chunk],
         vectors: list[list[float]],
+        metadata: list[dict[str, str | int | None]] | None = None,
     ) -> None:
         raise NotImplementedError
 

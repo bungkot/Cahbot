@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.domain.chat import Citation, RefusalReason
@@ -32,6 +34,29 @@ class HealthResponse(BaseModel):
     model_file: str
 
 
+class IngestResponse(BaseModel):
+    """Hasil POST /ingest serentak (MVP — pipeline berjalan hingga selesai)."""
+
+    source: str
+    status: Literal["done", "failed"]
+    n_chunks: int
+    content_hash: str
+
+
+class IngestJobOut(BaseModel):
+    """Satu baris antrean ingest untuk status polling."""
+
+    id: int
+    path: str
+    status: str
+    attempts: int
+    error: str | None = None
+
+
+class IngestJobsResponse(BaseModel):
+    jobs: list[IngestJobOut]
+
+
 class Citations(BaseModel):
     """Kontrak sitasi: wajib berasal dari domain, tidak pernah direkayasa manual."""
 
@@ -44,5 +69,8 @@ __all__ = [
     "Citation",
     "CitationOut",
     "HealthResponse",
+    "IngestJobOut",
+    "IngestJobsResponse",
+    "IngestResponse",
     "RefusalReason",
 ]

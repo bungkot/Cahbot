@@ -8,11 +8,13 @@ $1..$n — tidak pernah interpolasi string. FTS language dibaca dari tabel
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 import asyncpg
 import structlog
 
+from app.domain.documents import Chunk
 from app.domain.errors import RetrievalError
 
 logger = structlog.get_logger(__name__)
@@ -26,12 +28,6 @@ def _embed_literal(values: list[float], dim: int = 384) -> str:
     return "[" + ",".join(f"{v:.6f}" for v in values[:dim]) + "]"
 
 
-def _keys_literal(keys: list[tuple[int, int]]) -> str:
-    """Kunci (document_id, chunk_index) → definisikan set bertipe untuk ANY()."""
-
-    return "(" + ",".join(f"({d},{c})" for d, c in keys) + ")"
-
-
 class PgVectorRepository:
     """Implementasi `application.ports.VectorRepository` di atas pgvector."""
 
@@ -42,11 +38,26 @@ class PgVectorRepository:
 
     # --- ctors -------------------------------------------------------------
 
+    @property
+    def pool(self) -> asyncpg.Pool:
+        """Pool asyncpg — dipakai repo lain (job store) satu pool yang sama."""
+
+        return self._pool
+
     @classmethod
     async def create_from_env(cls, dsn: str, min_size: int, max_size: int) -> PgVectorRepository:
-        """Buat pool + konsol FTS config sekali pada startup."""
+        """Buat pool + codec jsonb + konsol FTS config sekali pada startup."""
 
-        pool = await asyncpg.create_pool(dsn, min_size=min_size, max_size=max_size)
+        async def _init(conn: asyncpg.Connection) -> None:
+            # jsonb ↔ dict otomatis untuk SETIAP koneksi pool (baca & tulis).
+            await conn.set_type_codec(
+                "jsonb",
+                encoder=json.dumps,
+                decoder=json.loads,
+                schema="pg_catalog",
+            )
+
+        pool = await asyncpg.create_pool(dsn, min_size=min_size, max_size=max_size, init=_init)
         async with pool.acquire() as conn:
             row: str | None = await conn.fetchval(FTS_CONFIG_SQL)
         fts = row or "simple"
@@ -101,14 +112,20 @@ class PgVectorRepository:
         if not keys:
             return []
         async with self._pool.acquire() as conn:
+            # Dua array int paralel (asyncpg bind int[]) — record[] literal string
+            # tidak dapat di-bind asyncpg; unnest menjaga semua kunci parametrised.
+            doc_ids = [d for d, _ in keys]
+            chunk_idxs = [c for _, c in keys]
             rows: list[asyncpg.Record] = await conn.fetch(
                 """
-                SELECT d.id AS document_id, d.source, c.content, c.chunk_index
-                FROM chunks c
+                SELECT k.document_id, d.source, c.content, c.chunk_index
+                FROM unnest($1::int[], $2::int[]) AS k(document_id, chunk_index)
+                JOIN chunks c
+                    ON c.document_id = k.document_id AND c.chunk_index = k.chunk_index
                 JOIN documents d ON d.id = c.document_id
-                WHERE (d.id, c.chunk_index) = ANY ($1::record[])
                 """,
-                _keys_literal(keys),
+                doc_ids,
+                chunk_idxs,
             )
         return [
             (
@@ -124,16 +141,22 @@ class PgVectorRepository:
         self,
         source: str,
         content_hash: str,
-        chunks: list[Any],
+        chunks: list[Chunk],
         vectors: list[list[float]],
+        metadata: list[dict[str, str | int | None]] | None = None,
     ) -> None:
-        """Idempoten: hash sama → no-op; berbeda → hapus lama + tulis baru (1 transaksi)."""
+        """Idempoten: hash sama → no-op; berbeda → hapus chunk lama + tulis baru.
+
+        SEMUA chunk ditulis dalam SATU transaksi — cek hash tidak membelah batch.
+        """
+
+        if len(chunks) != len(vectors) or len(chunks) != len(metadata or chunks):
+            msg = "chunks, vectors, metadata tidak konsisten ukurannya"
+            raise ValueError(msg)
 
         async def _write(conn: asyncpg.Connection) -> None:
             existing: asyncpg.Record | None = await conn.fetchrow(
-                """
-                SELECT id, content_hash FROM documents WHERE source = $1
-                """,
+                "SELECT id, content_hash FROM documents WHERE source = $1",
                 source,
             )
             if existing is not None and str(existing["content_hash"]) == content_hash:
@@ -151,18 +174,25 @@ class PgVectorRepository:
             )
             if existing is not None:
                 await conn.execute("DELETE FROM chunks WHERE document_id = $1", doc_id)
-            for chunk, vector in zip(chunks, vectors, strict=True):
-                await conn.execute(
-                    """
-                    INSERT INTO chunks (document_id, chunk_index, content, metadata, embedding)
-                    VALUES ($1, $2, $3, $4::jsonb, $5::halfvec)
-                    """,
-                    doc_id,
+            # dict dibind langsung — codec jsonb di pool meng-encode (jangan dumps manual).
+            meta_list = metadata or [{} for _ in chunks]
+            rows = [
+                (
+                    int(doc_id),
                     chunk.chunk_index,
                     chunk.content,
-                    "{}",
+                    dict(meta),
                     _embed_literal(vector),
                 )
+                for chunk, vector, meta in zip(chunks, vectors, meta_list, strict=True)
+            ]
+            await conn.executemany(
+                """
+                INSERT INTO chunks (document_id, chunk_index, content, metadata, embedding)
+                VALUES ($1, $2, $3, $4::jsonb, $5::halfvec)
+                """,
+                rows,
+            )
 
         async with self._pool.acquire() as conn, conn.transaction():
             await _write(conn)
