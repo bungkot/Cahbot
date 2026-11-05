@@ -1,0 +1,4 @@
+# Normalisasi EOL — repo ini di-mount ke container Linux di host Windows
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf

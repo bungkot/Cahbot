@@ -1,0 +1,32 @@
+# Environment
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Data & models (never commit, never bake into image)
+models/*.gguf
+models/*.onnx
+models/*.bin
+models/*.safetensors
+!models/README.md
+data/inbox/*
+!data/inbox/.gitkeep
+data/*
+!data/inbox/
+data/inbox/.gitkeep
+pgdata/
+pgdata/*
+!pgdata/.gitkeep
+
+# Docker
+.dockerignore

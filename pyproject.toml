@@ -1,0 +1,106 @@
+[project]
+name = "rag-mvp"
+version = "0.1.0"
+description = "Malay-language RAG chatbot MVP (scaffolding only)"
+requires-python = ">=3.12"
+readme = "README.md"
+license = { text = "MIT" }
+dependencies = [
+    # TODO(open-questions): pin versions after verifying against installed
+    # environment and Docker availability. Do not guess versions here.
+    "fastapi",
+    "uvicorn",
+    "pydantic-settings",
+    "structlog",
+    "langchain-core",
+    "langchain-text-splitters",
+    "langchain-community",
+    "llama-cpp-python",
+    "onnxruntime",
+    "asyncpg",
+    "watchdog",
+    "pymupdf4llm",
+    "markitdown",
+    "chainlit",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "mypy",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-playwright",
+    "playwright",
+]
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "mypy",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-playwright",
+    "playwright",
+]
+app = [
+    "fastapi",
+    "uvicorn",
+    "pydantic-settings",
+    "structlog",
+    "langchain-core",
+    "langchain-text-splitters",
+    "langchain-community",
+    "llama-cpp-python",
+    "onnxruntime",
+    "asyncpg",
+    "watchdog",
+    "pymupdf4llm",
+    "markitdown",
+    "chainlit",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests", "scripts"]
+exclude = [".venv", "node_modules"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+mypy_path = ["src"]
+files = ["src", "tests"]
+exclude = ["\\.venv/.*", "\\.git/.*"]
+warn_return_any = true
+warn_unused_configs = true
+check_untyped_defs = true
+disable_error_code = []
+
+[[tool.mypy.overrides]]
+# asyncpg belum menyertakan py.typed/stubs resmi
+module = ["asyncpg.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "integration: requires Docker + pgvector container",
+    "unit: pure unit test, no Docker",
+    "e2e: browser tests via Playwright (mockup served locally)",
+]
+asyncio_mode = "auto"
+addopts = "-q"

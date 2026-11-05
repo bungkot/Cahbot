@@ -1,0 +1,31 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // rag-mvp harness — model selected via /models or the OPENCODE_MODEL env
+  "model": "{env:OPENCODE_MODEL}",
+  "default_agent": "build",
+  "instructions": ["AGENTS.md", "docs/conventions/*.md"],
+  "watcher": {
+    // Data & large artifacts: do not trigger filesystem updates
+    "ignore": ["models/**", "data/inbox/**", "pgdata/**", ".venv/**"]
+  },
+  "formatter": true,
+  "permissions": [
+    // Safe default: edits inside the workspace allowed, outside ask
+    { "action": "edit", "resource": "*", "effect": "allow" },
+    { "action": "read", "resource": "~/**", "effect": "ask" },
+    { "action": "shell", "resource": "*", "effect": "allow" },
+    // Golden rule #6: pgdata must not be destroyed
+    { "action": "shell", "resource": "docker compose down -v*", "effect": "deny" },
+    { "action": "shell", "resource": "docker compose down *-v*", "effect": "deny" },
+    // Never commit models/secrets
+    { "action": "shell", "resource": "git add models/*", "effect": "deny" },
+    { "action": "shell", "resource": "git add .env*", "effect": "deny" },
+    // Other postgres volume liveness/delete operations require confirmation
+    { "action": "shell", "resource": "docker compose *pgdata*", "effect": "ask" },
+    { "action": "shell", "resource": "docker volume rm*", "effect": "ask" },
+    // Push/force is not part of the MVP flow
+    { "action": "shell", "resource": "git push*", "effect": "ask" }
+  ],
+  // Specialist subagents are defined file-based in .opencode/agents/*.md
+  // (rag-designer, pgvector-engineer, eval-runner, reviewer)
+}

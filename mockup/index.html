@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ms">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CAHBOT — RAG MVP (Mockup)</title>
+<meta name="description" content="Mockup statis UI Cahbot — RAG MVP gaya Swiss Modernist: thread chat berpetikan, keadaan penolakan, dan status ingest dokumen.">
+<style>
+/* ============================================================
+   CAHBOT mockup — Swiss Modernist
+   grid ketat, tanpa bayangan/radius besar, 1 aksen merah,
+   meta monospace. Lihat docs/conventions/ui.md.
+   ============================================================ */
+:root{
+  --ink:#0a0a0a;
+  --paper:#ffffff;
+  --surface:#f4f4f5;
+  --surface-2:#f8f8f8;
+  --line:#d9d9dc;
+  --line-strong:#0a0a0a;
+  --accent:#e30613;
+  --ok:#0a7a2f;
+  --warn:#b3541e;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"Inter","Helvetica Neue",Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--sans);color:var(--ink);background:var(--paper);
+  font-size:15px;line-height:1.55;
+  display:grid;grid-template-rows:auto 1fr;grid-template-columns:280px 1fr;
+  grid-template-areas:"mast mast" "side main";
+}
+/* masthead */
+header{
+  grid-area:mast;border-bottom:2px solid var(--line-strong);
+  padding:16px 24px;display:flex;align-items:baseline;gap:16px;
+}
+header h1{font-size:24px;font-weight:700;letter-spacing:-.01em}
+header .tagline{font-family:var(--mono);font-size:12px;color:#555}
+.tagline{font-family:var(--mono);font-size:12px;color:#555}
+header .pill{margin-left:auto;font-family:var(--mono);font-size:12px;border:1px solid var(--line);padding:2px 8px}
+/* sidebar */
+aside{grid-area:side;border-right:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:16px}
+h2{font-size:12px;font-family:var(--mono);letter-spacing:.04em;text-transform:none;color:#555;font-weight:500}
+.sessions{list-style:none}
+.sessions li{padding:6px 8px;border-left:2px solid transparent;cursor:pointer}
+.sessions li[aria-current="true"]{border-left-color:var(--accent);background:var(--surface-2)}
+/* #666 => kontras >=4.5:1 di atas putih & #f8f8f8 (audit Lighthouse) */
+.sessions .meta{font-family:var(--mono);font-size:11px;color:#666}
+/* ingest list */
+.docs{list-style:none;display:flex;flex-direction:column;gap:4px}
+.docs li{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;padding:4px 0;border-bottom:1px solid var(--line)}
+.docs li.empty-state{color:#666;border-bottom:0}
+.dot{width:8px;height:8px;background:#c9c9cd;flex:none}
+.dot.done{background:var(--ok)}.dot.running{background:var(--warn)}.dot.failed{background:var(--accent)}
+.dropzone{border:1px dashed var(--line);padding:16px;text-align:center;font-family:var(--mono);font-size:12px;color:#666}
+.dropzone:hover{border-color:var(--accent);color:var(--ink)}
+/* main chat */
+main{grid-area:main;display:grid;grid-template-rows:1fr auto;overflow:hidden}
+#chat-thread{overflow-y:auto;padding:24px 32px;display:flex;flex-direction:column;gap:24px}
+.msg{max-width:70ch}
+.msg .who{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:#555;display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.msg.user .who::before{content:"";width:16px;border-top:1px solid var(--ink)}
+/* revisi: pesan pengguna rata kanan (garis muncul di sisi kanan via row-reverse) */
+.msg.user .who{flex-direction:row-reverse}
+.msg.user{text-align:right;background:var(--surface-2);border-top:1px solid var(--line);padding:12px 16px}
+.msg.assistant .who::before{content:"";width:auto;height:2px;background:var(--ink);flex:1;max-width:48px}
+.msg.refusal{border-left:2px solid var(--accent);padding-left:16px}
+.citations{margin-top:12px;border-top:1px solid var(--line);padding-top:8px}
+.citations h3{font-family:var(--mono);font-size:11px;color:#555;font-weight:500;margin-bottom:6px}
+.citations ol{list-style:none}
+/* revisi: teks sumber sangat kecil (~8pt) — catatan teknis murni */
+.citations li{font-family:var(--mono);font-size:8pt;color:#666;padding:2px 0;cursor:default}
+.citations li:hover{color:var(--ink);outline:1px solid var(--line-strong);background:var(--paper)}
+.citation-ref{font-family:var(--mono);font-size:8pt;color:var(--accent);text-decoration:none}
+/* composer */
+form#composer{border-top:2px solid var(--line-strong);padding:16px 24px;display:flex;gap:16px;align-items:center;background:var(--paper)}
+#question{flex:1;border:1px solid var(--line-strong);border-radius:0;padding:12px 16px;font:inherit;background:var(--paper)}
+#question:focus{outline:2px solid var(--accent);outline-offset:2px}
+#send{background:var(--accent);color:#fff;border:0;border-radius:0;padding:12px 24px;font-family:var(--mono);font-size:13px;letter-spacing:.05em;cursor:pointer}
+#send:hover{background:#c00510}
+.demo-row{display:flex;gap:8px;padding:0 24px 8px}
+.demo{border:1px solid var(--line-strong);background:var(--paper);font-family:var(--mono);font-size:11px;padding:4px 10px;cursor:pointer}
+.demo:hover{background:var(--surface)}
+@media (max-width:760px){
+  body{grid-template-columns:1fr;grid-template-areas:"mast" "main"}
+  aside{display:none}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>CAHBOT</h1>
+  <span class="tagline">Retrieval Augmented Generation</span>
+  <span class="pill">mockup · sprint 1</span>
+</header>
+
+<aside>
+  <h2>SESI</h2>
+  <ul class="sessions" id="sessions">
+    <li aria-current="true"><div>Hari ini</div><div class="meta">0 mesej</div></li>
+  </ul>
+  <h2>DOKUMEN TERINDEKS</h2>
+  <ul class="docs" id="docs">
+    <li class="empty-state">tiada dokumen lagi</li>
+  </ul>
+  <div class="dropzone" id="dropzone"><span>[ + ] Letakkan fail di sini</span></div>
+</aside>
+
+<main>
+  <section id="chat-thread" role="log" aria-live="polite" aria-label="Riwayat perbualan">
+    <!-- kosong: thread mulai dari nol (use case baru), demo lewat tombol di bawah -->
+  </section>
+  <div class="demo-row">
+    <button class="demo" id="demo-grounded" type="button">demo: jawapan + petikan</button>
+    <button class="demo" id="demo-refusal" type="button">demo: penolakan</button>
+    <button class="demo" id="demo-clear" type="button">kosongkan thread</button>
+  </div>
+  <form id="composer" autocomplete="off">
+    <input id="question" name="question" placeholder="Tulis soalan…" aria-label="Soalan">
+    <button id="send" type="submit">HANTAR →</button>
+  </form>
+</main>
+
+<script>
+// Demo logic (mockup): render thread canvas — bukan aplikasi final.
+const thread = document.getElementById("chat-thread");
+function el(cls, who, body){const a=document.createElement("article");a.className="msg "+cls;
+  const w=document.createElement("div");w.className="who";w.textContent=who;a.appendChild(w);
+  const p=document.createElement("p");p.innerHTML=body;a.appendChild(p);return a;}
+function citationsBlock(cites){
+  // thread kini kosong di awal — blok sumber dirakit sendiri, bukan di-clone
+  const c=document.createElement("div");c.className="citations";
+  c.innerHTML=`<h3>SUMBER</h3><ol>${cites.map((x,i)=>`<li>${i+1}. ${x}</li>`).join("")}</ol>`;
+  return c;}
+function renderGrounded(body, cites){
+  const m=el("assistant","CAHBOT",body);
+  if(cites&&cites.length){m.appendChild(citationsBlock(cites));}
+  return m;}
+document.getElementById("demo-grounded").addEventListener("click",()=>{
+  thread.appendChild(renderGrounded(
+  'Jumlah kerja lebih masa maksimum sebulan ialah 36 jam mengikut peraturan pekerjaan yang terindeks <a class="citation-ref" href="#">[1]</a> <a class="citation-ref" href="#">[2]</a>.',
+  ['spesifikasi-abc.docx — bahagian 2, hlm. 4: "…maksimum 36 jam…"',
+   'handbook-cuti.pdf — bahagian 7, hlm. 31: "Lebih masa diatur…"']));});
+document.getElementById("demo-refusal").addEventListener("click",()=>{
+  const r=el("assistant refusal","CAHBOT","Maaf, saya tidak menjumpai maklumat tersebut dalam dokumen yang tersedia.");
+  r.id="refusal-msg";thread.appendChild(r);});
+document.getElementById("composer").addEventListener("submit",(e)=>{
+  e.preventDefault();const q=document.getElementById("question");if(!q.value.trim())return;
+  const u=el("user","ANDA",q.value.replace(/</g,"&lt;"));thread.appendChild(u);
+  q.value="";thread.appendChild(el("assistant","CAHBOT","(mockup) Respons pipeline akan muncul di sini."));
+  thread.scrollTop=thread.scrollHeight;});
+document.getElementById("demo-clear").addEventListener("click",()=>{
+  thread.innerHTML="";thread.appendChild(el("user","ANDA","(thread dikosongkan)"));});
+</script>
+</body>
+</html>
