@@ -1,6 +1,10 @@
 # Cahbot - Retrieval Augmented Generation
 
+[![CI](https://github.com/bungkot/Cahbot/actions/workflows/ci.yml/badge.svg)](https://github.com/bungkot/Cahbot/actions/workflows/ci.yml)
+
 **Malay-language** RAG chatbot, offline-first (CPU-only): FastAPI + llama.cpp (Qwen3 1.7B GGUF) + Postgres 17 + pgvector + Chainlit UI. All documents & models stay local — no external APIs.
+
+> **CI**: gerbang penuh di GitHub Actions — `quality` (lint/mypy/unit), `retrieval-gate` (integration + eval gerbang rilis), `generation-gate` (LLM Qwen3-4B Q4_K_M auto-download → smoke → e2e) — tanpa dev container Docker.
 
 ## Quick start
 
