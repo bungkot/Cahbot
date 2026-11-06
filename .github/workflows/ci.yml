@@ -35,20 +35,6 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-x-db-service: &db-service
-  image: pgvector/pgvector:pg17
-  env:
-    POSTGRES_USER: rag
-    POSTGRES_PASSWORD: rag
-    POSTGRES_DB: rag
-  ports:
-    - 5432:5432
-  options: >-
-    --health-cmd "pg_isready -U rag"
-    --health-interval 5s
-    --health-timeout 5s
-    --health-retries 12
-
 jobs:
   # =========================================================================
   # Job 1 — quality: gerbang cepat statis + unit (tanpa DB, tanpa model)
@@ -95,7 +81,21 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     services:
-      db: *db-service
+      # Postgres+pgvector — provision standar Actions (duplikat eksplisit di
+      # job ini karena top-level anchors/x-keys ditolak parser Actions).
+      db:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: rag
+          POSTGRES_PASSWORD: rag
+          POSTGRES_DB: rag
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rag"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     env:
       DATABASE_URL: postgresql://rag:rag@localhost:5432/rag
       # Inbox di workspace (bukan /data) — dibaca builder seed + CI seed script.
@@ -174,7 +174,21 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     services:
-      db: *db-service
+      # Postgres+pgvector — provision standar Actions (duplikat eksplisit di
+      # job ini karena top-level anchors/x-keys ditolak parser Actions).
+      db:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: rag
+          POSTGRES_PASSWORD: rag
+          POSTGRES_DB: rag
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rag"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     env:
       DATABASE_URL: postgresql://rag:rag@localhost:5432/rag
       INGEST_INBOX_PATH: ${{ github.workspace }}/data/inbox
