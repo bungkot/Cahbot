@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
+from collections.abc import Callable
 
 import asyncpg
 import structlog
@@ -23,9 +23,16 @@ FTS_CONFIG_SQL = "SELECT resolved FROM _fts_config WHERE name = 'fts_config'"
 
 
 def _embed_literal(values: list[float], dim: int = 384) -> str:
-    """Format vektor halfvec aman: '[v1,v2,...]' — elemen diformat, bukan interpolasi input user."""
+    """Format vektor halfvec aman: '[v1,v2,...]' — elemen diformat, bukan interpolasi input user.
 
-    return "[" + ",".join(f"{v:.6f}" for v in values[:dim]) + "]"
+    Golden rule #3: dimensi terkunci — panjang tidak sepadan → ralat (bukan
+    potongan diam-diam yang menyangkut noda dimensi).
+    """
+
+    if len(values) != dim:
+        msg = f"dim embedding {len(values)} != {dim} terkunci"
+        raise ValueError(msg)
+    return "[" + ",".join(f"{v:.6f}" for v in values) + "]"
 
 
 class PgVectorRepository:
@@ -63,6 +70,9 @@ class PgVectorRepository:
                 decoder=json.loads,
                 schema="pg_catalog",
             )
+            # HNSW per-connection: SET sekali saat koneksi dibuka (bukan
+            # per-ORDER query — tak berinterpolasi user; nilai int).
+            await conn.execute(f"SET hnsw.ef_search = {int(hnsw_ef_search)}")
 
         pool = await asyncpg.create_pool(dsn, min_size=min_size, max_size=max_size, init=_init)
         async with pool.acquire() as conn:
@@ -76,9 +86,7 @@ class PgVectorRepository:
     async def search_dense(self, query_embedding: list[float], top_k: int) -> list[tuple[int, int]]:
         try:
             async with self._pool.acquire() as conn:
-                # Konfigurasi per-connection (pgvector-dev): pemeriksaan recal HNSW.
-                # int() memastikan angka — SET tidak dapat di-bind, bukan interpolasi user.
-                await conn.execute(f"SET hnsw.ef_search = {int(self._hnsw_ef_search)}")
+                # hnsw.ef_search sudah di-SET di _init pool — sekali per koneksi.
                 rows: list[asyncpg.Record] = await conn.fetch(
                     """
                     SELECT document_id, chunk_index
@@ -209,7 +217,11 @@ class PgVectorRepository:
             await _write(conn)
 
 
-def run_blocking(counterpart: Any) -> Any:
-    """Helper kecil untuk menjalankan callable sinkron berat di worker thread."""
+async def run_blocking[T: object](callable_sync: Callable[[], T]) -> T:
+    """Helper kecil untuk menjalankan callable sinkron berat di worker thread.
 
-    return asyncio.to_thread(counterpart)
+    Generik (PEP 695): tanpa campangan `Any` (golden rule #1); pemanggil
+    nama tak berhujah.
+    """
+
+    return await asyncio.to_thread(callable_sync)

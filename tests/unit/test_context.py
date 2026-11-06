@@ -82,3 +82,22 @@ def test_build_context_max_chunks_cap() -> None:
     chunks = [_chunk(i, 0, "x" * 40, 1.0 - i * 0.1) for i in range(1, 7)]
     context = build_context("q", chunks, max_tokens=10_000, max_chunks=4)
     assert len(context.chunks) == 4
+
+
+def test_build_context_sempadan_tepat_sama_max_tokens() -> None:
+    """Chunk yang menjumlah tepat == budget tetap diterima (bukan dipotong)."""
+
+    c1 = _chunk(1, 0, "x" * 16, 1.0)  # est 4 token
+    c2 = _chunk(2, 1, "y" * 16, 0.9)  # est 4 token
+    context = build_context("q", [c1, c2], max_tokens=8)
+    assert len(context.chunks) == 2
+
+
+def test_build_context_overflow_pertama_menghentikan() -> None:
+    """Overflow pertama menghentikan urutan — chunk kecil selepasnya pun gugur."""
+
+    c1 = _chunk(1, 0, "x" * 4, 1.0)  # est 1 tok, muat
+    c2 = _chunk(2, 1, "y" * 400, 0.9)  # est 100 tok → melebihi budget
+    c3 = _chunk(3, 2, "z" * 4, 0.8)  # kecil (est 1 tok) — TETAP gugur
+    context = build_context("q", [c1, c2, c3], max_tokens=50)
+    assert [c.chunk_index for c in context.chunks] == [0]

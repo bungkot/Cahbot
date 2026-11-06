@@ -19,4 +19,4 @@ Python 3.12, mypy strict, ruff (E,F,I,UP,B,SIM,RUF), line 100. All production co
 - Logs: `structlog` JSON; mandatory fields `session_id`, `model`, `latency_ms`; **no** print/standard logging.
 - SQL: always fully in the repo layer, parametrised `$1..$n`; SQL comments for non-trivial queries.
 - Tests: `unit` marker default; `integration` only when Docker is needed; DB fixtures use a one-off template database.
-- Language: code/identifiers in English; comments & docstrings in Indonesian when explaining decisions.
+- Language: code/identifiers in English; comments & docstrings in Bahasa Melayu (project language — golden rule #9).

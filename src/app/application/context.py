@@ -53,8 +53,9 @@ def build_context(
     - Chunk berikutnya ditambah berurutan skor selagi anggaran token tidak
       melebihi `max_tokens` dan bilangan chunk tidak melebihi `max_chunks`
       (kontrak RETRIEVER_TOP_K: bilangan chunk yang masuk prompt).
-    - Chunk yang tidak muat digugurkan (bukan dipotong separuh) — konteks
-      kekal urutan skor.
+    - **Overflow pertama menghentikan urutan** (bukan skip-lalu-teruskan):
+      chunk lebih kecil selepasnya pun gugur — konteks kekal berurutan-skor
+      tanpa celah.
 
     Input dianggap sudah diurut skor RRF menurun (unsur pertama = terbaik).
     """

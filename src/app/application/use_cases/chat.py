@@ -91,7 +91,7 @@ class ChatUseCase:
                 source=source,
                 chunk_index=chunk_index,
                 content=content,
-                rrf_score=scores[(doc_id, chunk_index)],
+                rrf_score=scores.get((doc_id, chunk_index), 0.0),
             )
             for doc_id, source, content, chunk_index in ordered
         )

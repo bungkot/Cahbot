@@ -65,6 +65,7 @@ Status: ✅ done — semua KR hijau: gate (ruff/format/mypy strict + 21 unit + 7
   - [x] runner eval retrieval-only: `src/eval/run_eval.py` — hasil: recall@4=1.00 (10/10), MRR@4=1.00, latency p50/p95=39/122 ms; refusal-tanpa-konteks 0/3 = dijangka (dasar ambang skor RRF bermula Sprint 4); `eval/results/20261106-004153.{json,md}`
 - **KR-4 Indexing playbook** — run the `pgvector-dev` skill to create the HNSW index after a bulk load (per the init schema).
   - [x] playbook + langkah EXPLAIN di `docs/runbook.md` § "Indexing playbook (Sprint 3)" + bukti EXPLAIN direkodkan
+  - [x] **hardening pasca-review `/rules` (semua dread-betul dihormati tanpa menyentuh skema)**: `SET hnsw.ef_search` ke pool `_init` (sekali per koneksi — p50 eval turun 39→13 ms), `run_blocking` generik PEP-695 (tiada lagi `Any`), guard `_embed_literal` (dim ≠ 384 → ValueError, golden rule #3), `.get` konsisten `_order_chunks`, docstring `build_context` selaras break-on-overflow (+2 uji sempadan), eval: `print()` → structlog + `_source_map` O(n), test tak sentuh attr peribadi; `docs/conventions/code.md` → Bahasa Melayu (selaras codebase); sisa review → Backlog (eval per-kes try/except, dedup wiring, observability `session_id`/`latency_ms` penuh = Sprint 4 KR-5).
 - **Definition of done**: EXPLAIN shows HNSW+GIN are used; recall@4 ≥ 0.7 on the initial golden set (release threshold 0.80 in Sprint 5).
   - ✅ met: HNSW+GIN terbukti dalam EXPLAIN; recall@4 = 1.00 ≥ 0.70; smoke LULUS (`docker exec` laluan POST /ingest disahkan; estet: app `degraded` hanya kerana GGUF LLM belum sedia — Sprint 4).
   - Nota backlog (pre-existing, bukan Sprint 3): menjalankan SEMUA suite dalam satu proses `pytest -q` mengadakan konflik pytest-asyncio×pytest-playwright (loop dikongsi) — gate dikekalkan check-all + marker berasingan; port tindakan pink ke Backlog bagi pemiwaian integrasi test-runner; juga: watchdog lewat beberapa saat pada mount Windows (POST /ingest/fallback) → di-Backlog.
@@ -98,6 +99,8 @@ Status: ☐ todo
 ## Backlog (post-release / optional)
 - Satukan test-runner: jalankan `pytest -q` SATU proses (unit+integration+e2e) — kini konflik pytest-asyncio × pytest-playwright (loop dikongsi; `RuntimeError: Runner.run() cannot be called from a running event loop`). Gate sebuah sementara: check-all + marker berasingan (pre-existing, bukan Sprint 3).
 - Watchdog lewat beberapa saat untuk fail baru pada mount Windows→Linux (peek-and-poll fallback?). POST `/ingest` bekerja sebagai laluan operasi terdekat — selesai di Sprint 6 hardening.
+- (review Sprint 3) eval: try/except per kes → `CaseResult` bercatatan supaya satu kes rosak tidak gugurkan agregat penuh; normalisasi nama sumber agar tak senyap-skor 0.
+- (review Sprint 3) eval wiring menyalin container composition (model path/pool/hnsw) — pertimbangkan kongsi factory kecil bersama `build_production_container`.
 - Optional reranker (bge-reranker ONNX CPU) — only if Recall@4 < 0.75 without the reranker → a measured decision, not a default (ADR D4).
 - Scanned PDF ingest (light OCR) if the corpus requires it.
 - Multi-tenant: multiple collections/namespaces in chunks.

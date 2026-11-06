@@ -94,13 +94,10 @@ def load_golden(path: Path) -> list[GoldenCase]:
     return cases
 
 
-def _source_of(key: tuple[int, int], rows: list[tuple[int, str, str, int]]) -> str:
-    """Kunci (document_id, chunk_index) → nama sumber; '' bila tidak didapati."""
+def _source_map(rows: list[tuple[int, str, str, int]]) -> dict[tuple[int, int], str]:
+    """(document_id, chunk_index) → nama sumber, sekali bina untuk O(1) carian."""
 
-    for doc_id, source, _content, chunk_index in rows:
-        if (doc_id, chunk_index) == key:
-            return source
-    return ""
+    return {(doc_id, chunk_index): source for doc_id, source, _content, chunk_index in rows}
 
 
 async def _run_case(
@@ -136,7 +133,8 @@ async def _run_case(
 
     # Urut sources mengikut skor fusi (turun) untuk mengira rank MRR.
     rows = await repo.fetch_chunks([key for key, _ in fused])
-    sources_in_order = tuple(_source_of(key, rows) for key, _score in fused)
+    src_map = _source_map(rows)
+    sources_in_order = tuple(src_map.get(key, "") for key, _score in fused)
     case_src = case.source.casefold()
     rank = 0
     for pos, src in enumerate(sources_in_order, start=1):
@@ -267,8 +265,16 @@ async def main() -> None:
         results=str(json_path),
         passed=ok,
     )
-    print(f"[eval] recall@4={report.recall_at_4:.2f}  mrr@4={report.mrr_at_4:.2f}")
-    print(f"[eval] ringkasan: {md_path}")
+    logger.info(
+        "eval_result",
+        recall_at_4=round(report.recall_at_4, 3),
+        mrr_at_4=round(report.mrr_at_4, 3),
+        latency_p50_ms=round(report.latency_p50_ms, 1),
+        latency_p95_ms=round(report.latency_p95_ms, 1),
+        results_json=str(json_path),
+        results_md=str(md_path),
+        passed=ok,
+    )
     if not ok:
         raise SystemExit(1)
 

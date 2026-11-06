@@ -70,9 +70,12 @@ def _make_use_case(
     chunks: dict[int, str],
     **kwargs: int,
 ) -> tuple[ChatUseCase, _StubLLM]:
-    uc = ChatUseCase(_StubEmbedder(), _StubRepository(dense, chunks), _StubLLM(), **kwargs)
-    llm = uc._llm
-    assert isinstance(llm, _StubLLM)
+    """Susun use case + simpan stub LLM eksplisit (tak sentuh attr peribadi)."""
+
+    embedder = _StubEmbedder()
+    repo = _StubRepository(dense, chunks)
+    llm = _StubLLM()
+    uc = ChatUseCase(embedder, repo, llm, **kwargs)
     return uc, llm
 
 
