@@ -18,6 +18,14 @@ mengikut [SemVer](https://semver.org/). Projek: chatbot RAG Bahasa Melayu
   diperbesar 20 → 24 kes (g021–g023 `must_refuse` + g024 kontrol boleh-jawab);
   `KNOWN_GAP_IDS` dikosongkan — refusal_precision gerbang kini 6/6 = 1.00
   tanpa pengecualian (hasil `eval/results/20261106-130134.json`).
+- **Over-refusal pada kalimat negatif (kes `g014`/`g024`) — lanjutan hari
+  sama**: (1) frasa korpus seed dibetulkan positif-dahulu ("baki cuti boleh
+  diwarisi … sehingga 90 hari") + re-ingest; (2) aturan 6 baru di prompt
+  grounded (refleks berkecuaian — jangan menolak kerana perkataan soalan ≠
+  perkataan konteks). Probe 3 varian × 4 soalan atas LLM sebenar; g014/g024
+  kini dijawab tepat + sitasi; kawalan balik (g001 betul, g011/g012/g013
+  masih ditolak pada lapisan betul); gerbang rilis `passed=True`, e2e 8/8,
+  smoke LULUS (bukti docs/eval.md § pasca-Sprint 6).
 
 ## [0.1.0] — 2026-11-06
 
