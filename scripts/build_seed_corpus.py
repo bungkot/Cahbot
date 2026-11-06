@@ -10,11 +10,14 @@ Worker watchdog akan memproses fail baru secara automatik.
 
 from __future__ import annotations
 
+import os
 from typing import Final
 
 import pymupdf
 
-INBOX: Final = "/data/inbox"  # mount ./data → /data di container dev
+# Mount ./data → /data di container dev; di CI/host lain dioverride via env
+# (sama dengan INGEST_INBOX_PATH aplikasi — satu sumber direktori inbox).
+INBOX: Final = os.environ.get("INGEST_INBOX_PATH", "/data/inbox")
 
 
 def _write_pdf(path: str, blocks: list[list[str]]) -> None:
