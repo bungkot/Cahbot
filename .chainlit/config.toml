@@ -1,0 +1,52 @@
+# Konfigurasi Chainlit (Sprint 5 KR-1) — senget bawaan sekadar keperluan
+# kontrak UI (docs/conventions/ui.md): nama assistant, CoT disembunyi (blok
+# pemikiran Qwen3 sudah difilter di gateway — jangan dipaparkan lagi),
+# CSS Swiss di-/public/swiss.css, upload spontan dihadkan ke dokumen.
+# Senarai penuh kunci: cadangan bawaan (chainlit.config.DEFAULT_CONFIG_STR).
+
+[project]
+session_timeout = 3600
+cache = false
+allow_origins = ["*"]
+
+[features]
+unsafe_allow_html = false
+latex = false
+user_message_markdown = true
+user_message_autoscroll = true
+assistant_message_autoscroll = true
+auto_tag_thread = true
+edit_message = true
+allow_thread_sharing = false
+favorites = false
+
+[features.spontaneous_file_upload]
+enabled = true
+accept = ["application/pdf", ".pdf"]
+max_files = 5
+max_size_mb = 50
+
+[features.audio]
+enabled = false
+
+[features.mcp]
+enabled = false
+
+[UI]
+name = "Cahbot"
+# tema terang = kontrak Swiss (kertas putih, dakwat hitam, aksen merah)
+default_theme = "light"
+cot = "hidden"
+custom_css = "/public/swiss.css"
+alert_style = "modern"
+confirm_new_chat = false
+
+[[UI.header_links]]
+name = "Dokumentasi"
+display_name = "Dokumentasi"
+icon_url = ""
+url = "/docs"
+target = "_blank"
+
+[meta]
+generated_by = "2.12.0"

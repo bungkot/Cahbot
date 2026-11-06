@@ -1,0 +1,71 @@
+/* CAHBOT — Override tema Chainlit mengenai kontrak Swiss Modernist
+   (docs/conventions/ui.md). Paritas piksel penuh tidak dijamin (D6-update);
+   sifat kontrak yang melekat: tanpa radius/senja landasan, 1 aksen merah,
+   sans Inter untuk teks, mono utk meta, spacing 8pt. */
+:root {
+  --accent: #e30613;               /* Swiss International Red */
+  --ink: #0a0a0a;
+  --paper: #ffffff;
+  --surface: #f4f4f5;
+  --radius: 0px;                    /* kontrak: border-radius 0 */
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 0px;
+  --shadow: 0 0 0 0 transparent;    /* tiada drop shadow */
+  --font-sans: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* teks sans + spacing */
+body, .cl-message-content {
+  font-family: var(--font-sans);
+  color: var(--ink);
+  line-height: 1.55;
+}
+
+/* gently disable shadows + border-radius global */
+button, input, textarea,
+.cl-user-message, .cl-assistant-message, .cl-message, .cl-dropzone {
+  border-radius: 0 !important;
+  box-shadow: var(--shadow) !important;
+}
+
+/* bututan utama (kirim) = blok pejalan pejalan merah, teks putih (kontrak #3) */
+button[type="submit"], .cl-send-message button {
+  background: var(--accent) !important;
+  color: #fff !important;
+  border-radius: 0 !important;
+}
+
+/* fokus = garis merah 2px tanpa pekaran (kontrak aksesibilitas) */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* meta (label model/kala/jan) — mono, kecil, abu-abu */
+.cl-message .step-header, .cl-message .message-date, .cl-thread .meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 6%;
+  color: #6b6b70;
+  text-transform: lowercase;
+}
+
+/* senarai sitasi kaki-jawapan (kaki-bilang mono) — blok kertas #F8 */
+.cl-message pre, .cl-message code {
+  font-family: var(--font-mono);
+}
+
+/* kod blok daripada markdown jawapan: tanpa senjarah landasan */
+.cl-message .markdown-block .footnote {
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+
+/* pesan penolakan: strip merah kiri (kontrak #2 — pengisaran prompt akata) */
+.cl-message.assistant:has(textarea), .cl-message:has(.refusal) {
+  border-left: 2pt solid var(--accent);
+}

@@ -19,6 +19,12 @@ models/*.onnx
 models/*.bin
 models/*.safetensors
 !models/README.md
+# Chainlit runtime (Sprint 5): files sessions + secret generated (never commit)
+.files/
+.chainlit/access_code.json
+.chainlit/config.toml.secrets
+chainlit_db.sqlite
+.uvicorn.log
 data/inbox/*
 !data/inbox/.gitkeep
 data/*

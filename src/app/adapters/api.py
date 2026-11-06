@@ -24,6 +24,7 @@ from fastapi import APIRouter, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
+from app.adapters.chainlit_state import set_container
 from app.adapters.schemas import (
     ChatCitationsFrame,
     ChatFinalFrame,
@@ -81,6 +82,7 @@ def create_app(
                 logger.error("container_build_failed", error=str(exc))
         if live_container is not None:
             app.state.__dict__[STATE_REQUEST_ATTR] = live_container
+            set_container(live_container)  # UI Chainlit (sub-ASGI) membaca di sini
             await _warm_up_models(live_container, config)
         worker_task: asyncio.Task[None] | None = None
         if start_worker and live_container is not None:
@@ -105,7 +107,32 @@ def create_app(
     app = FastAPI(title="rag-mvp", version="0.1.0", lifespan=lifespan)
     _register_context_middleware(app)
     _register_routes(app, config)
+    _mount_chainlit_ui(app)  # UI "/" (di-mount TERAKHIR — /api routes kekal utama)
     return app
+
+
+def _mount_chainlit_ui(app: FastAPI) -> None:
+    """Sprint 5 KR-1: Chainlit sub-ASGI di "/" (D6-update, theming via swiss.css).
+
+    Target module TIDAK di-import di sini (mount_chainlit memuatkan module
+    sendiri; import ganda mendaftar callback dua kali). Laluan fail dihitung
+    dari spec pakej — konsisten dev (src-layout) dan image prod (site-packages).
+    """
+
+    try:
+        import importlib.util
+
+        from chainlit.utils import mount_chainlit
+
+        spec = importlib.util.find_spec("app.adapters.chainlit_app")
+        origin = getattr(spec, "origin", None)
+        if origin is None:
+            logger.warning("chainlit_target_missing")
+            return
+        mount_chainlit(app, target=origin, path="/")
+        logger.info("chainlit_mounted", path="/")
+    except Exception as exc:  # chainlit gagal muat → API tetap hidup (degraded UI)
+        logger.warning("chainlit_mount_failed", error=str(exc))
 
 
 async def _warm_up_models(live_container: Container, config: Settings) -> None:

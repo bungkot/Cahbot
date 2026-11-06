@@ -96,20 +96,21 @@ check_untyped_defs = true
 disable_error_code = []
 
 [[tool.mypy.overrides]]
-# asyncpg belum menyertakan py.typed/stubs resmi
-module = ["asyncpg.*"]
+# Pakej tanpa py.typed: asyncpg, onnxruntime, pymupdf(+4llm), llama_cpp,
+# watchdog.observers (Observer dinamis)
+module = ["asyncpg.*", "llama_cpp.*", "onnxruntime.*", "pymupdf.*", "pymupdf4llm.*", "watchdog.observers.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# Pakej tanpa py.typed: onnxruntime, pymupdf(+4llm), watchdog.observers (Observer dinamis)
-module = ["onnxruntime.*", "pymupdf.*", "pymupdf4llm.*", "watchdog.observers.*"]
+# Chainlit (Sprint 5) tanpa py.typed â€” module dilepaskan: semua API `cl.*` jadi Any
+module = ["chainlit.*"]
 ignore_missing_imports = true
+follow_imports = "skip"
 
 [[tool.mypy.overrides]]
-# llama-cpp-python tanpa py.typed (Sprint 4 gateway)
-module = ["llama_cpp.*"]
-ignore_missing_imports = true
-
+# Decorator `@cl.*` tidak ber-typing (atas pakej tanpa py.typed) â€” had modul UI sahaja
+module = ["app.adapters.chainlit_app", "app.adapters.chainlit_data"]
+disable_error_code = ["untyped-decorator"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
