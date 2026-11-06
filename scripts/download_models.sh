@@ -10,9 +10,11 @@
 #   MODELS_DIR  default "models" (relatif ke repo root)
 #   LLM_REPO    default Qwen/Qwen3-4B-Instruct-2507-GGUF
 #   LLM_FILE    default Qwen3-4B-Instruct-2507-Q4_K_M.gguf (~2.6 GB)
-#   E5_REPO     default onnx-community/multilingual-e5-small-ONNX
+#   E5_CANDIDATES  spasi-daftar repo e5 (di-probe berurutan; pertama yang
+#                  merespons 200 dipakai) — default onnx-community/...-ONNX,
+#                  Xenova/multilingual-e5-small, onnx-community/multilingual-e5-small
 #   HF_TOKEN    opsi (GitHub Secrets) — bila kosong ≥ coba anonim. Runner CI
-#               (IP datacenter) often 401 anon: isi read-token → lolos.
+#               (IP datacenter) sering 401 anon: isi read-token → lolos.
 #
 # Jalur utama = CLI `hf` (huggingface_hub via uvx): UA sah + CDN redirect + auth.
 # Jatuh ke curl (dengan token bila ada) bila hk tidak tersedia/gagal — setiap
@@ -26,11 +28,32 @@ MODE="${1:-all}"
 MODELS_DIR="${MODELS_DIR:-models}"
 LLM_FILE="Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 LLM_REPO="${LLM_REPO:-Qwen/Qwen3-4B-Instruct-2507-GGUF}"
-E5_REPO="${E5_REPO:-onnx-community/multilingual-e5-small-ONNX}"
+
+# Kandidat repo e5 (nama ONNX berubah di HF onnx-community/Xenova) — di-
+# probe urut bila token; yang pertama merespons 200 dipakai nama tersebut.
+E5_CANDIDATES="${E5_CANDIDATES:-onnx-community/multilingual-e5-small-ONNX Xenova/multilingual-e5-small onnx-community/multilingual-e5-small}"
 
 # env alias lama (HUGGING_FACE_HUB_TOKEN) turut di-respec oleh hub CLI.
 export HF_TOKEN="${HF_TOKEN:-${HUGGING_FACE_HUB_TOKEN:-}}"
 export HUGGING_FACE_HUB_TOKEN="${HF_TOKEN:-${HUGGING_FACE_HUB_TOKEN:-}}"
+
+_hf_curl() { # _hf_curl <url> — keluaran skanner lewat stdout
+    if [ -n "${HF_TOKEN}" ]; then
+        curl -fsS -H "Authorization: Bearer ${HF_TOKEN}" "${1}"
+    else
+        curl -fsS "${1}"
+    fi
+}
+
+_find_repo() { # _find_repo "<repo1 repo2 ...>" — echo repo pertama yang 200
+    for repo in $1; do
+        if _hf_curl "https://huggingface.co/api/models/${repo}" > /dev/null 2>&1; then
+            echo "${repo}"
+            return 0
+        fi
+    done
+    return 1
+}
 
 _hf_fetch() { # <repo_id> <path-dalam-repo> <dest-file>
     local repo="$1"
@@ -87,13 +110,25 @@ case "${MODE}" in
         # FP32 (onnx/model.onnx) — IDENTIK dengan model di dev host (~450 MB):
         # ambang kosinus penolakan (0.82) diukur atas e5 fp32; varian
         # quantized akan menggeser skor dan mencemari gerbang eval.
-        fetch "${E5_REPO}" "onnx/model.onnx" "${MODELS_DIR}/e5/onnx/model.onnx"
-        fetch "${E5_REPO}" "tokenizer.json" "${MODELS_DIR}/e5/tokenizer.json"
+        # Repo e5 di-probe berurutan (nama ONNX cides di onnx-community/Xenova);
+        # fail keras dengan daftar nama yang dicoba supaya mudah dikoreksi.
+        e5_repo="$(_find_repo "${E5_CANDIDATES}")" || {
+            echo "[models] GAGAL: tidak ada repo e5 valid di kandidat: ${E5_CANDIDATES}" >&2
+            exit 3
+        }
+        echo "[models] repo e5 terpilih: ${e5_repo}"
+        fetch "${e5_repo}" "onnx/model.onnx" "${MODELS_DIR}/e5/onnx/model.onnx"
+        fetch "${e5_repo}" "tokenizer.json" "${MODELS_DIR}/e5/tokenizer.json"
         ;;
     all)
         fetch "${LLM_REPO}" "${LLM_FILE}" "${MODELS_DIR}/${LLM_FILE}"
-        fetch "${E5_REPO}" "onnx/model.onnx" "${MODELS_DIR}/e5/onnx/model.onnx"
-        fetch "${E5_REPO}" "tokenizer.json" "${MODELS_DIR}/e5/tokenizer.json"
+        e5_repo="$(_find_repo "${E5_CANDIDATES}")" || {
+            echo "[models] GAGAL: tidak ada repo e5 valid di kandidat: ${E5_CANDIDATES}" >&2
+            exit 3
+        }
+        echo "[models] repo e5 terpilih: ${e5_repo}"
+        fetch "${e5_repo}" "onnx/model.onnx" "${MODELS_DIR}/e5/onnx/model.onnx"
+        fetch "${e5_repo}" "tokenizer.json" "${MODELS_DIR}/e5/tokenizer.json"
         ;;
     *)
         echo "[models] mode tidak dikenal: ${MODE} (gunakan all|llm|e5)" >&2
