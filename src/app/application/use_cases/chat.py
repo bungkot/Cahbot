@@ -23,6 +23,7 @@ from app.application.ports import (
     LLMGateway,
     VectorRepository,
 )
+from app.application.refusal_guard import is_personal_state_query
 from app.domain.chat import (
     ChatAnswer,
     ChatCitationsEvent,
@@ -105,8 +106,21 @@ class ChatUseCase:
 
         log = logger.bind(session_id=session_id, stage="chat")
         started = time.perf_counter()
-        history = await self._load_history(session_id, history_override)
         model_name = self._llm.model_name
+
+        # Guard keadaan-peribadi (pasca-Sprint 6, sebelum embed): soalan menanya
+        # baki/milik sendiri → penolakan deterministik TANPA retrieval/LLM —
+        # data per-orang tidak pernah ada dalam korpus dasar statik (bukti
+        # halusinasi g011: docs/eval.md § Sprint 4 verification).
+        if is_personal_state_query(question):
+            log.info("refused_personal_state", model=model_name)
+            refusal = ChatAnswer.refused(RefusalReason.PERSONAL_STATE_NOT_IN_CORPUS)
+            yield ChatFinalEvent(answer=refusal)
+            await self._persist(session_id, question, refusal)
+            self._log_chat_done(log, started, model_name, refused=True)
+            return
+
+        history = await self._load_history(session_id, history_override)
 
         embedding = await self._embedder.embed_query(question)
         try:

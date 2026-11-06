@@ -43,7 +43,11 @@ SYSTEM_PROMPT: str = (
     " dari luar konteks dan jangan menerka.\n"
     "4. " + REFUSAL_INSTRUCTION + "\n"
     '5. Contoh format jawapan: "Cuti tahunan ialah 12 hari bekerja setahun'
-    ' [sumber: handbook.pdf, bahagian ke-1]."'
+    ' [sumber: handbook.pdf, bahagian ke-1]."\n'
+    "6. Jangan menolak jawapan hanya kerana perkataan soalan berbeza dengan"
+    " perkataan konteks; jika konteks memuatkan aturan yang berkaitan, baca"
+    ' ia lengkap dengan pengecualiannya (mis. "tidak melebihi 90 hari"'
+    " bermaksud dibenarkan sehingga 90 hari) dan jawab daripadanya."
     # Soft-switch rasmi Qwen3 — melumpuhkan blok pemikiran (tag think).
     # Dikekalkan kerana gateway punya penyaring streaming sebagai
     # lapisan ketahanan bila model 1.7B abaikan suis ini.

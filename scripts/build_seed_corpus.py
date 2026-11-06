@@ -41,8 +41,8 @@ def main() -> None:
                 "Cuti tahunan\n"
                 "Kakitangan tetap layak menerima cuti tahunan sebanyak 12 hari bekerja\n"
                 "bagi setiap tahun perkhidmatan, tertakluk kepada kelulusan ketua jabatan.\n"
-                "Baki cuti tahunan tidak boleh diwarisi melebihi 90 hari tanpa kelulusan\n"
-                "pengurusan atasan.\n"
+                "Baki cuti tahunan boleh diwarisi ke tahun berikutnya sehingga 90 hari;\n"
+                "melebihi 90 hari hanya boleh diluluskan oleh pengurusan atasan.\n"
             ),
         ],
         [

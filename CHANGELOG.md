@@ -4,6 +4,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/) (ringkas MVP); versi
 mengikut [SemVer](https://semver.org/). Projek: chatbot RAG Bahasa Melayu
 (offline, llama.cpp + pgvector; lihat `docs/architecture.md`).
 
+## [Unreleased]
+
+### Dibetulkan
+
+- **Halusinasi soalan keadaan-peribadi (kes `g011`)** — pasca-rilis Sprint 6:
+  guard penafian deterministik baharu `app.application.refusal_guard` menolak
+  soalan "baki/milik sendiri" (mis. "Berapa baki cuti tahunan saya yang
+  tinggal?") SEBELUM embedding/LLM (`PERSONAL_STATE_NOT_IN_CORPUS`) — data
+  dinamik per-orang tidak pernah ada dalam korpus dasar statik. Lapisan prompt
+  gagal menawannya pada model 1.7B (bukti docs/eval.md § Sprint 4); kini
+  dijawab dengan penolakan baku segera (~ms, tanpa kos LLM). Golden set
+  diperbesar 20 → 24 kes (g021–g023 `must_refuse` + g024 kontrol boleh-jawab);
+  `KNOWN_GAP_IDS` dikosongkan — refusal_precision gerbang kini 6/6 = 1.00
+  tanpa pengecualian (hasil `eval/results/20261106-130134.json`).
+
 ## [0.1.0] — 2026-11-06
 
 Rilis MVP pertama — semua sprint (0–6) selesai. Tag: `v0.1.0`.

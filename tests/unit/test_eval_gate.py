@@ -64,11 +64,12 @@ def _report(
     )
 
 
-# Tiga kes mesti-tolak: g011 (jurang, Backlog) tidak hit; dua lain hit.
+# Tiga kes mesti-tolak — SEMUA hit pasca-Sprint 6: g011 ditolak deterministik
+# oleh guard keadaan-peribadi sebelum LLM; KNOWN_GAP_IDS kini kosong.
 _REFUSED_GATE: tuple[CaseResult, ...] = (
     _refuse("g012", hit=True),
     _refuse("g013", hit=True),
-    _refuse("g011", hit=False),
+    _refuse("g011", hit=True),
 )
 _CASES_MIN: int = len(_REFUSED_GATE)
 
@@ -90,7 +91,7 @@ def test_lulus_penuh() -> None:
         )
     )
     assert details["n_cases"] == 20
-    assert details["n_refused_gate"] == 2  # g011 dikecualikan
+    assert details["n_refused_gate"] == 3  # tiada lagi dikecualikan — jurang g011 selesai
     assert details["refusal_precision"] == 1.0
 
 

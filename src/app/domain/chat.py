@@ -53,6 +53,10 @@ class RefusalReason(StrEnum):
     NO_RELEVANT_CONTEXT = "no_relevant_context"
     LOW_RELEVANCE_SCORE = "low_relevance_score"
     RETRIEVAL_UNAVAILABLE = "retrieval_unavailable"
+    # Guard deterministik (pasca-Sprint 6): soalan keadaan peribadi — data
+    # dinamik per-orang yang tiada dalam korpus dasar statik (mis. baki cuti
+    # sendiri; kerana halusinasi borderline g011, docs/eval.md).
+    PERSONAL_STATE_NOT_IN_CORPUS = "personal_state_not_in_corpus"
 
 
 @dataclass(frozen=True, slots=True)

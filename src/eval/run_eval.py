@@ -3,8 +3,9 @@
 Ukur terhadap golden set (`eval/golden/golden.jsonl`):
 - recall@4   : kes boleh-jawapan dengan chunk sumber betul dalam top-4 fusi RRF;
 - MRR@4      : 1/rank pertama chunk sumber betul dalam top-4;
-- refusal    : kes `must_refuse` ditolak polisi — konteks kosong ATAU cosine
-               top-1 dense di bawah ambang polisi (`RETRIEVAL_REFUSAL_THRESHOLD`);
+- refusal    : kes `must_refuse` ditolak polisi — guard keadaan-peribadi ATAU
+               konteks kosong ATAU cosine top-1 dense di bawah ambang polisi
+               (`RETRIEVAL_REFUSAL_THRESHOLD`);
 - ambang suggestion: titik tengah jurang cosine (maks-tolak, min-jawab) —
                dipaparkan supaya default konfigurasi kekal berdasar data.
 
@@ -26,6 +27,7 @@ from typing import cast
 import structlog
 
 from app.application.context import fuse_rrf
+from app.application.refusal_guard import is_personal_state_query
 from app.core.config import get_settings
 from app.infrastructure.onnx_embedder import OnnxEmbedder
 from app.infrastructure.postgres.repository import PgVectorRepository
@@ -45,11 +47,11 @@ LATENCY_P95_MS_MAX: float = 8000.0
 N_GOLDEN_MIN: int = 20
 N_REFUSAL_MIN: int = 3
 
-# Jurang model yang diketahui (g011 — di-Backlog, ROADMAP Sprint 4): kes ini
-# dikecualikan dari refusal_precision hingga Backlog-nya diselesaikan.
-# Bukan jalan gelap: identiti kes diisytiharkan di sini + di docs/eval.md;
-# senarai wajib kosong sebelum rilis (item pasca-Sprint 5).
-KNOWN_GAP_IDS: frozenset[str] = frozenset({"g011"})
+# Jurang model yang diketahui: Kosong sejak lapisan penafian keadaan-peribadi
+# (pasca-Sprint 6) — `g011` borderlin kini ditolak deterministik oleh guard
+# sebelum LLM (docs/eval.md § pasca-Sprint 6). Senarai ini HANYA diisi semula
+# bila jurang model baharu terbukti via ukuran (bukan pendapat).
+KNOWN_GAP_IDS: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,19 +151,24 @@ async def _run_case(
     fused = fuse_rrf(dense, sparse, rrf_k)[:top_k]
 
     if case.must_refuse:
-        # Polisi KR-4: konteks kosong ATAU cosine di bawah ambang → betul-tolak.
+        # Polisi KR-4 + guard keadaan-peribadi (imitasi pipeline use case yang
+        # sebenar — guard dijalankan LANJUTAN di use case tanpa retrieval;
+        # di sini retrieval tetap berjalan untuk bukti cosine + latency):
+        # guard ATAU konteks kosong ATAU cosine di bawah ambang → betul-tolak.
+        guard_hit = is_personal_state_query(case.question)
         kosong = not fused
         rendah = top_cosine is not None and top_cosine < refusal_threshold
-        refused_by_policy = kosong or rendah
-        note = (
-            ""
-            if refused_by_policy
-            else (
+        refused_by_policy = kosong or rendah or guard_hit
+        if guard_hit:
+            note = "guard keadaan-peribadi (baki/milik sendiri — luar korpus)"
+        elif refused_by_policy:
+            note = ""
+        else:
+            note = (
                 "konteks dicari (cosine "
                 + ("tiada-dense" if top_cosine is None else f"{top_cosine:.4f}")
                 + f" ≥ ambang {refusal_threshold:.2f}) — kasus borderline"
             )
-        )
         return CaseResult(
             id=case.id,
             question=case.question,

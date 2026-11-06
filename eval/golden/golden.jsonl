@@ -18,3 +18,7 @@
 {"id": "g018", "question": "Apa jadi jika klaim perjalanan dikemukakan selepas tempoh 14 hari?", "expected_answer": "Klaim akan ditolak melainkan dengan persetujuan khas pengurusan kewangan.", "source": "panduan-klaim-perjalanan.pdf", "must_refuse": false}
 {"id": "g019", "question": "Klaim perjalanan diproses oleh unit mana selepas kelulusan Ketua Jabatan?", "expected_answer": "Unit Kewangan memproses klaim selepas diluluskan Ketua Jabatan.", "source": "panduan-klaim-perjalanan.pdf", "must_refuse": false}
 {"id": "g020", "question": "Adakah perjalanan udara mengikut kadar tiket tertentu?", "expected_answer": "Ya, perjalanan udara tertakluk kepada kadar tiket ekonomi dan memerlukan kelulusan awal.", "source": "panduan-klaim-perjalanan.pdf", "must_refuse": false}
+{"id": "g021", "question": "Berapa baki klaim perjalanan saya yang belum dibayar?", "expected_answer": "", "source": "", "must_refuse": true}
+{"id": "g022", "question": "Berapa hari cuti saya yang tinggal?", "expected_answer": "", "source": "", "must_refuse": true}
+{"id": "g023", "question": "Berapa baki gaji saya pada bulan ini?", "expected_answer": "", "source": "", "must_refuse": true}
+{"id": "g024", "question": "Bolehkah baki cuti saya dibawa ke tahun hadapan?", "expected_answer": "Ya, baki cuti tahunan boleh diwarisi, tetapi tidak melebihi 90 hari tanpa kelulusan pengurusan atasan.", "source": "handbook-cuti.pdf", "must_refuse": false}
