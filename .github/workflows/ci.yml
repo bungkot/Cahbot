@@ -1,6 +1,7 @@
 # rag-mvp CI (Sprint 6 KR-5) — gerbang minimum: lint + mypy strict + unit.
-# Integration/e2e/eval tidak dijalankan di CI (butuh Docker + model lokal —
-# golden rule #2); gerbang rilis penuh dikekalkan di dev container (make).
+# Integration/e2e/eval sekarang jalan di runner GitHub Actions TANPA Docker
+# dev container (cf. ci-full.yml — service container pgvector + model
+# auto-download & LLM Qwen3-4B); job cepat ini tetap gerbang minimum per-PR.
 name: ci
 
 on:
@@ -14,13 +15,13 @@ concurrency:
 
 jobs:
   quality:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # pin (bukan ubuntu-latest — migrasi 26.10, lihat ci-full.yml)
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10
         with:
           python-version: "3.12"
 
