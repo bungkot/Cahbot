@@ -48,7 +48,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${DB_USER:-rag}:${DB_PASSWORD:-rag}@db:5432/${DB_NAME:-rag}
-      MODEL_PATH: /models/qwen3-1.7b-q4_k_m.gguf
+      MODEL_PATH: /models/Qwen3-1.7B-Q3_K_M.gguf
       LLM_THREADS: ${LLM_THREADS:-4}
       HOST: 0.0.0.0
       PORT: 8000
@@ -81,7 +81,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${DB_USER:-rag}:${DB_PASSWORD:-rag}@db:5432/${DB_NAME:-rag}
       DB_HOST: db
-      MODEL_PATH: /models/qwen3-1.7b-q4_k_m.gguf
+      MODEL_PATH: /models/Qwen3-1.7B-Q3_K_M.gguf
       LLM_THREADS: ${LLM_THREADS:-4}
       HOST: 0.0.0.0
       PORT: 8000

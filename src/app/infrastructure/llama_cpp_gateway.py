@@ -32,6 +32,85 @@ logger = structlog.get_logger(__name__)
 # StopIteration tidak boleh digandakan lintas thread; gunakan sentinel dalaman.
 _STREAM_END: Final = object()
 
+# Tanda blok nalar Qwen3 — token tunggal yang boleh pecah lintas chunk, jadi
+# penyaring mesti mengekalkan buffer (lihat _ThinkDeltaFilter).
+# Dibina per remitan bagi menghindari pemotoman literal oleh aliran fail.
+_THINK_OPEN: Final = "<" + "think>"
+_THINK_CLOSE: Final = "<" + "/" + "think>"
+
+
+def _hold_suffix(buffer: str, *tags: str) -> str:
+    """Suffix terpanjang `buffer` yang merupakan prefix awalan salah satu `tags`.
+
+    Untuk menahan detik-akhir buffer yang mungkin permulaan tanda terpisah
+    lintas chunk (cth. buffer berakhir selepas `<` / `</` sedangkan tanda
+    penuh tiba bersama chunk berikutnya).
+    """
+
+    longest = ""
+    for tag in tags:
+        for size in range(min(len(buffer), len(tag) - 1), 0, -1):
+            if buffer.endswith(tag[:size]):
+                candidate = buffer[-size:]
+                if len(candidate) > len(longest):
+                    longest = candidate
+                break  # prefix terpanjang bagi tag ini dijumpai
+    return longest
+
+
+class _ThinkDeltaFilter:
+    """Penyaring aliran token-delta: buang blok `` hela Qwen3.
+
+    Lapisan ketahanan di gateway: soft-switch `/no_think` sudah ada dalam
+    system prompt, tapi model Qwen3 1.7B kadang masih mengeluarkan blok —
+    tanpa penapis ini, proses berpikir mentah bocor ke UI. Tanda terpisah
+    lintas chunk disimpan sebagai buffer ekor sehingga tanda lengkap.
+    """
+
+    def __init__(self) -> None:
+        self._in_think: bool = False
+        self._tail: str = ""
+
+    def feed(self, delta: str) -> str:
+        """Satu delta masuk → teks atas-muka (luar blok pemikiran) keluar."""
+
+        buffer = self._tail + delta
+        self._tail = ""
+        visible: list[str] = []
+        while buffer:
+            if self._in_think:
+                stop = buffer.find(_THINK_CLOSE)
+                if stop < 0:
+                    self._tail = _hold_suffix(buffer, _THINK_CLOSE)
+                    break
+                buffer = buffer[stop + len(_THINK_CLOSE) :]
+                self._in_think = False
+                continue
+            opening = buffer.find(_THINK_OPEN)
+            if opening < 0:
+                # Tanda tutup yatim (tanpa buka) — buang juga, jangan bocor.
+                stray_close = buffer.find(_THINK_CLOSE)
+                if stray_close >= 0:
+                    visible.append(buffer[:stray_close])
+                    buffer = buffer[stray_close + len(_THINK_CLOSE) :]
+                    continue
+                hold = _hold_suffix(buffer, _THINK_OPEN, _THINK_CLOSE)
+                self._tail = hold
+                visible.append(buffer[: len(buffer) - len(hold)])
+                break
+            visible.append(buffer[:opening])
+            self._in_think = True
+            buffer = buffer[opening + len(_THINK_OPEN) :]
+        return "".join(visible)
+
+    def flush(self) -> str:
+        """Sisa buffer terakhir di hujung aliran (kosong bila masih di blok)."""
+
+        if self._in_think:
+            return ""  # aliran terpotong di tengah pemikiran — buang segala sisa
+        tail, self._tail = self._tail, ""
+        return tail
+
 
 class LlamaCppGateway:
     """Model GGUF Qwen3 via llama-cpp-python; urutan-mesej dari `grounded_prompt`."""
@@ -133,6 +212,10 @@ class LlamaCppGateway:
         gen = await asyncio.to_thread(self._open_stream, model, messages)
         start = time.perf_counter()
         n_tokens = 0
+        # Penyiring blok pemikiran Qwen3 (lapisan ketahanan) — buang sebelum
+        # teks dilepaskan kepada pemanggil; satu tapisan per aliran.
+        think_filter = _ThinkDeltaFilter()
+        first_visible = True  # strip depan-whitespace artifact model (cth. awalan "\n\n")
         try:
             while True:
                 chunk = await asyncio.to_thread(self._advance, gen)
@@ -140,8 +223,22 @@ class LlamaCppGateway:
                     break
                 text = self._extract_delta(chunk)
                 if text:
+                    visible = think_filter.feed(text)
+                    if not visible:
+                        continue  # nol delta (semua dalam blok pemikiran)
+                    if first_visible:
+                        visible = visible.lstrip()
+                        first_visible = visible != ""
+                        if not visible:
+                            continue
                     n_tokens += 1
-                    yield text
+                    yield visible
+            tail = think_filter.flush()
+            if tail:
+                if first_visible:
+                    tail = tail.lstrip()
+                if tail:
+                    yield tail
         finally:
             elapsed_s = max(time.perf_counter() - start, 1e-9)
             logger.info(

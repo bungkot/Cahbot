@@ -62,8 +62,10 @@ seed:            # bina korpus seed BM ke data/inbox (worker auto-ingest)
 smoke:
 	$(RUN) bash scripts/smoke.sh
 
+# eval: PYTHONPATH=/workspace/src — runner men-import pakej `app` (src-layout);
+# tanpa env ini `uv run` dari /workspace tak menjumpainya (sama seperti target app).
 eval:
-	$(RUN) uv run python src/eval/run_eval.py
+	$(PROF) exec -e PYTHONPATH=/workspace/src dev uv run python src/eval/run_eval.py
 
 # --- db ---
 db-migrate:   # terapkan db/migrations/*.sql berurutan (psql di container db)
@@ -85,5 +87,7 @@ mem:
 	scripts/mem_probe.sh
 
 # --- app runtime (dev server di dalam container; port 8000 dipetakan) ---
+# PYTHONPATH=/workspace/src: pakej `app` hidup di src-layout, `uv run uvicorn`
+# dari /workspace sahaja tidak menjumpainya tanpa env ini.
 app:
-	$(PROF) exec dev uv run uvicorn app.adapters.api:app --host 0.0.0.0 --port 8000
+	$(PROF) exec -e PYTHONPATH=/workspace/src dev uv run uvicorn app.adapters.api:app --host 0.0.0.0 --port 8000

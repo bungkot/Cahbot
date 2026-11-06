@@ -7,7 +7,7 @@ All project commands run **inside the container** — the Windows host only runs
 ```bash
 cp .env.example .env          # adjust if needed
 # place models on the host (mounted into the container):
-#   models/qwen3-1.7b-q4_k_m.gguf        (LLM)
+#   models/Qwen3-1.7B-Q3_K_M.gguf        (LLM — kuantisasi q3_k_m)
 #   models/multilingual-e5-small.onnx    (embedding)
 
 make up                       # dev stack: db + dev container (deps + chromium ready)
@@ -39,7 +39,7 @@ Production UI: Chainlit at `http://localhost:8000/` (arriving with the Sprint 5 
 | e2e crash: /dev/shm full | chromium headless OOM in shm | use the `--disable-dev-shm-usage` flag; check the dev `mem_limit` |
 | `make: command not found` (Windows) | make not installed on the host | run the underlying command directly: `docker compose --profile dev run --rm dev uv run pytest -m unit` — Makefile targets are just wrappers |
 | mounted files show CRLF / odd permissions | git autocrlf / mount attributes | use `.gitattributes` with `* text=auto eol=lf`; check `git config core.autocrlf false` |
-| app keeps restarting, OOM | insufficient RAM (large model) | check `docker stats`; lower `LLM_N_CTX`/`LLM_N_BATCH`; make sure it's the q4 1.7B model |
+| app keeps restarting, OOM | insufficient RAM (large model) | check `docker stats`; lower `LLM_N_CTX`/`LLM_N_BATCH`; make sure it's the q3_k_m 1.7B model (~939 MB); WSL VM bawaan ~4 GB tak cukup semasa load bersama embedder — naik `.wslconfig` (`memory=6GB, swap=4GB`) lalu restart Docker Desktop |
 | `/health` fails after up | DB not healthy yet | `docker compose logs db`; the healthcheck waits automatically |
 | answer without citations | empty retrieval or broken prompt | check the chunk count in the logs; run a manual retrieval query in db-shell |
 | ingest not running | watchdog/worker dead | check `ingest_jobs` row statuses; `make logs` |

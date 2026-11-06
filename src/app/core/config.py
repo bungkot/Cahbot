@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     db_pool_max: int = 5
 
     # --- LLM (llama.cpp) ---
-    model_path: str = "/models/qwen3-1.7b-q4_k_m.gguf"
+    model_path: str = "/models/qwen3-1.7b-q3_k_m.gguf"
     llm_threads: int = 4
     llm_n_ctx: int = 4096
     llm_n_batch: int = 256

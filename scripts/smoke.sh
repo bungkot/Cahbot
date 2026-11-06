@@ -43,7 +43,6 @@ PY
 
 RESP=$(curl -fsS -X POST "${BASE_URL}/ingest" -F "file=@${PDF_PATH}")
 echo "[smoke] ingest response: ${RESP}"
-
 # --- 3) antrean job worker -----------------------------------------------------
 echo -n "[smoke] jobs: "
 curl -fsS "${BASE_URL}/ingest/jobs?limit=5"
@@ -58,6 +57,36 @@ data = json.loads(sys.argv[1])
 assert data.get("status") == "done", data
 assert int(data.get("n_chunks", 0)) >= 1, data
 print(f"[smoke] ingest OK: {data['n_chunks']} chunk(s), hash {data['content_hash'][:12]}…")
+PY
+
+# --- 4b) pembersihan: PDF smoke TIDAK kekal dalam korpus (kandungannya
+# tidak padan dgn handbook — cacau hasil eval/petikan). Tanpa ini, setiap
+# smoke run mencemar korpus dengan fakta bertentangan ("14 hari").
+uv run python - <<'PY'
+import asyncio
+import os
+
+import asyncpg
+
+
+async def _purge() -> None:
+    """Buang dokumen smoke dari korpus: chunks dahulu, kemudian baris dokumen."""
+    url = os.environ.get("DATABASE_URL") or "postgresql://rag:rag@db:5432/rag"
+    conn = await asyncpg.connect(url)
+    try:
+        await conn.execute(
+            "DELETE FROM chunks WHERE document_id IN"
+            " (SELECT id FROM documents WHERE source = 'smoke-surface.pdf')"
+        )
+        await conn.execute(
+            "DELETE FROM documents WHERE source = 'smoke-surface.pdf'"
+        )
+    finally:
+        await conn.close()
+
+
+asyncio.run(_purge())
+print("[smoke] korpus dibersihkan: smoke-surface.pdf dikeluarkan")
 PY
 
 echo "[smoke] LULUS"
