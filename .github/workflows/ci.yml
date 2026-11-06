@@ -103,6 +103,9 @@ jobs:
       # e5 fp32 IDENTIK dengan dev host — ambang kosinus 0.82 tetap baku.
       EMBED_MODEL_PATH: models/e5/onnx/model.onnx
       EMBED_TOKENIZER_PATH: models/e5/tokenizer.json
+      # Token baca HF (Repo Secrets, bisa ditinggali → anonim): unduhan anonim
+      # dari IP datacenter runner sering mendapatkan 401 dari huggingface.co.
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
       PYTHONPATH: src
     steps:
       - uses: actions/checkout@v7
@@ -200,6 +203,8 @@ jobs:
       # pada 4 vCPU jawaban ≤384 token memangkas risiko melampaui hitung
       # waktu; mutu jawaban golden tetap (prompt grounded + sitasi).
       LLM_MAX_TOKENS: 384
+      # Token baca HF (Repo Secrets, bisa ditinggali → anonim) — sama dgn job A.
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
       PYTHONPATH: src
     steps:
       - uses: actions/checkout@v7
