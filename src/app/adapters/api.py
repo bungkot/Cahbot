@@ -12,6 +12,7 @@ middleware contextvars (KR-5) — session_id + request_id terikat ke semua log.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -20,7 +21,7 @@ from pathlib import Path, PurePosixPath
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
@@ -39,6 +40,7 @@ from app.adapters.schemas import (
     SessionMessageOut,
     SessionMessagesResponse,
 )
+from app.adapters.security import ApiKeyGuard, SessionRateLimiter
 from app.adapters.worker.watchdog_runner import InboxWatchdogRunner
 from app.core.config import Settings, get_settings
 from app.core.container import Container, build_production_container
@@ -58,6 +60,12 @@ STATE_REQUEST_ATTR = "container"
 STATE_WORKER_ATTR = "worker_task"
 SSE_MEDIA_TYPE = "text/event-stream"
 
+# Sprint 6 KR-2: had waktu langkah shutdown (drain pool) — shutdown mesti
+# selesai segera; tak selesai → warning dan proses keluar tetap.
+SHUTDOWN_DRAIN_TIMEOUT_S = 10.0
+
+_REQUEUE_BOOT_REASON = "job `running` tertinggal — proses lama mati; dipulihkan saat startup"
+
 
 def create_app(
     settings: Settings | None = None,
@@ -69,6 +77,7 @@ def create_app(
 
     config = settings or get_settings()
     configure_logging(config.log_level)
+    limiter, rate_dep = _deps_rate_limit(config)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -84,6 +93,13 @@ def create_app(
             app.state.__dict__[STATE_REQUEST_ATTR] = live_container
             set_container(live_container)  # UI Chainlit (sub-ASGI) membaca di sini
             await _warm_up_models(live_container, config)
+        # Sprint 6 KR-2 boot-resume: job `running` tertinggal proses mati —
+        # await (bukan fire-and-forget) agar beres SEBELUM worker memetik.
+        if live_container is not None:
+            await _requeue_stuck_jobs(live_container)
+        trim_task: asyncio.Task[None] | None = None
+        if limiter.enabled:
+            trim_task = _start_trim_task(limiter)
         worker_task: asyncio.Task[None] | None = None
         if start_worker and live_container is not None:
             worker = InboxWatchdogRunner(
@@ -92,23 +108,107 @@ def create_app(
                 inbox_root=config.ingest_inbox_path,
                 poll_interval_s=config.ingest_poll_interval_s,
                 max_attempts=config.ingest_max_attempts,
+                rescan_interval_s=config.ingest_rescan_interval_s,
             )
             worker_task = asyncio.create_task(worker.run(), name="ingest-worker")
             app.state.__dict__[STATE_WORKER_ATTR] = worker_task
         yield
+        # --- graceful shutdown (Sprint 6 KR-2): stop worker → drain pool ---
+        if trim_task is not None:
+            trim_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await trim_task
         if worker_task is not None:
             worker_task.cancel()
             try:
                 await worker_task
             except asyncio.CancelledError:
                 logger.info("worker_stopped")
+            except Exception as exc:
+                # Worker mati dengan ralat sebenar — jangan skip drain pool.
+                logger.error("worker_task_failed", error=str(exc))
+        if live_container is not None and live_container.pool_closer is not None:
+            try:
+                await asyncio.wait_for(
+                    live_container.pool_closer(), timeout=SHUTDOWN_DRAIN_TIMEOUT_S
+                )
+            except TimeoutError:
+                logger.warning("pool_drain_timeout", timeout_s=SHUTDOWN_DRAIN_TIMEOUT_S)
+            except Exception as exc:
+                logger.warning("pool_drain_failed", error=str(exc))
         logger.info("app_stop")
 
     app = FastAPI(title="rag-mvp", version="0.1.0", lifespan=lifespan)
     _register_context_middleware(app)
-    _register_routes(app, config)
+    _register_routes(app, config, rate_handler=rate_dep)
     _mount_chainlit_ui(app)  # UI "/" (di-mount TERAKHIR — /api routes kekal utama)
     return app
+
+
+def _deps_guard(
+    config: Settings,
+) -> Callable[[Request], Awaitable[None]]:
+    """Dependency API key — riil bila `API_KEY` diisi, no-op bila kosong."""
+
+    guard = ApiKeyGuard(config)
+
+    async def _dependency(request: Request) -> None:
+        guard.check(request)
+
+    return _dependency
+
+
+def _deps_rate_limit(
+    config: Settings,
+) -> tuple[SessionRateLimiter, Callable[[Request], Awaitable[None]]]:
+    """Dependency had kadar per-klien: kunci dasar IP; session_id (badan
+    /chat) dijadikan gadai kedua (rotasi sid tidak mengelak had)."""
+
+    limiter = SessionRateLimiter(config)
+
+    async def _dependency(request: Request) -> None:
+        client_ip = request.client.host if request.client else "tanpa-alamat"
+        key = client_ip
+        if request.url.path == "/chat":
+            # Badan dibaca (di-cache Starlette) — Pydantic membaca semula dari
+            # cache yang sama. Gagal parse → tetap dihad dengan kunci IP sahaja.
+            raw = await request.body()
+            try:
+                sid = str(json.loads(raw).get("session_id") or "")
+                if sid:
+                    key = f"{client_ip}|sid:{sid}"
+            except (ValueError, AttributeError):
+                pass
+        limiter.check(key)
+
+    return limiter, _dependency
+
+
+def _start_trim_task(limiter: SessionRateLimiter) -> asyncio.Task[None]:
+    """Pembersihan berkala peta kad (review Sprint 6): buang kunci lapuk
+    setiap 5 minit — memori dijaga tanpa mengganggu request hot path."""
+
+    async def _loop() -> None:
+        while True:
+            await asyncio.sleep(300.0)
+            removed = limiter.trim_stale_sessions()
+            if removed:
+                logger.info("rate_keys_trimmed", removed=removed)
+
+    return asyncio.create_task(_loop(), name="rate-trim")
+
+
+async def _requeue_stuck_jobs(live_container: Container) -> None:
+    """Sprint 6 KR-2: job `running` dari proses mati → `pending` (boot-resume).
+
+    Best-effort: kegagalan DB hanya di-log — app tetap hidup (job boleh
+    ditaruh semula manual lewat POST /ingest).
+    """
+
+    try:
+        await live_container.ingest_jobs.requeue_stuck(_REQUEUE_BOOT_REASON)
+    except Exception as exc:
+        logger.warning("requeue_stuck_failed", error=str(exc))
 
 
 def _mount_chainlit_ui(app: FastAPI) -> None:
@@ -171,21 +271,43 @@ def _register_context_middleware(app: FastAPI) -> None:
             structlog.contextvars.clear_contextvars()
 
 
-def _register_routes(app: FastAPI, config: Settings) -> None:
-    """Semua route HTTP — tanpa logika bisnis; error domain → HTTP status."""
+def _register_routes(
+    app: FastAPI,
+    config: Settings,
+    *,
+    rate_handler: Callable[[Request], Awaitable[None]] | None = None,
+) -> None:
+    """Semua route HTTP — tanpa logika bisnis; error domain → HTTP status.
+
+    Sprint 6 KR-1: `/health` terbuka (load-balancer); route API lain diberi
+    deps keselamatan: API key (pilihan) + had kadar per-klien. `rate_handler`
+    dibangun sekali di create_app (pemilik instance limiter = trim task).
+    """
 
     router = APIRouter()
+    auth_dep = Depends(_deps_guard(config))
+    if rate_handler is None:
+        rate_handler = _deps_rate_limit(config)[1]
+    rate_dep = Depends(rate_handler)
 
     @router.get("/health", response_model=HealthResponse)
-    async def health() -> HealthResponse:
+    async def health(request: Request) -> HealthResponse:
         model_ok = Path(config.model_path).exists()
+        state = getattr(request.app.state, STATE_REQUEST_ATTR, None)
+        db_ok = False
+        if state is not None:
+            try:
+                db_ok = bool(await state.ingest_jobs.ping())
+            except Exception as exc:  # DB turun → degraded, bukan 500
+                logger.warning("health_ping_failed", error=str(exc))
+        db_state = "ok" if db_ok else "unreachable"
         return HealthResponse(
-            status="ok" if model_ok else "degraded",
-            database="unknown",  # ping penuh oleh pool — forward Sprint 6
+            status="ok" if model_ok and db_ok else "degraded",
+            database=db_state,
             model_file="ok" if model_ok else "missing",
         )
 
-    @router.post("/chat", response_model=None)
+    @router.post("/chat", response_model=None, dependencies=[auth_dep, rate_dep])
     async def chat(payload: ChatRequest, request: Request) -> ChatResponse | StreamingResponse:
         """Tanya-jawab grounded. `stream=false` → JSON; `stream=true` → SSE aliran."""
         state = getattr(request.app.state, STATE_REQUEST_ATTR, None)
@@ -210,7 +332,11 @@ def _register_routes(app: FastAPI, config: Settings) -> None:
             is_refusal=answer.is_refusal,
         )
 
-    @router.get("/sessions/{session_id}/messages", response_model=SessionMessagesResponse)
+    @router.get(
+        "/sessions/{session_id}/messages",
+        response_model=SessionMessagesResponse,
+        dependencies=[auth_dep, rate_dep],
+    )
     async def session_messages(
         session_id: str, request: Request, limit: int = 30
     ) -> SessionMessagesResponse:
@@ -234,7 +360,7 @@ def _register_routes(app: FastAPI, config: Settings) -> None:
             ],
         )
 
-    @router.post("/ingest", response_model=IngestResponse)
+    @router.post("/ingest", response_model=IngestResponse, dependencies=[auth_dep, rate_dep])
     async def ingest(request: Request, file: Annotated[UploadFile, File()]) -> IngestResponse:
         """POST serentak untuk MVP (KR-4): jalankan parse→chunk→embed→upsert."""
 
@@ -256,7 +382,9 @@ def _register_routes(app: FastAPI, config: Settings) -> None:
             content_hash=result.content_hash,
         )
 
-    @router.get("/ingest/jobs", response_model=IngestJobsResponse)
+    @router.get(
+        "/ingest/jobs", response_model=IngestJobsResponse, dependencies=[auth_dep, rate_dep]
+    )
     async def ingest_jobs(request: Request, limit: int = 50) -> IngestJobsResponse:
         state = getattr(request.app.state, STATE_REQUEST_ATTR, None)
         if state is None:
@@ -264,7 +392,7 @@ def _register_routes(app: FastAPI, config: Settings) -> None:
         jobs = await state.ingest_jobs.list_jobs(limit=max(1, min(limit, 200)))
         return IngestJobsResponse(jobs=[_job_out(j) for j in jobs])
 
-    @router.get("/ingest/jobs/{job_id}")
+    @router.get("/ingest/jobs/{job_id}", dependencies=[auth_dep, rate_dep])
     async def ingest_job(job_id: int, request: Request) -> IngestJobOut:
         state = getattr(request.app.state, STATE_REQUEST_ATTR, None)
         if state is None:

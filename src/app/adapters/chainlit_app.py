@@ -56,6 +56,19 @@ def _footnotes(citations: tuple[Citation, ...]) -> str:
     return f"\n\n---\n{_CITATION_HEADER}\n{lines}"
 
 
+def _refusal_blockquote(content: str) -> str:
+    """Penolakan → markdown blockquote: tanpa token, klas berubah tanpa HTML.
+
+    Kontrak ui.md § Refusal — pesan baku muncul verbatim (tiada sisipan/awalan
+    mestivum); hanya lapisan pengutaraan yang dibungkus class via `<blockquote>`
+    (markdown biasa — `unsafe_allow_html` kekal false).
+    """
+
+    lines = content.split("\n")
+    quoted = "\n".join(f"> {line}" if line else ">" for line in lines)
+    return quoted
+
+
 @cl.on_chat_start
 async def _on_chat_start() -> None:
     """Satu sesi browser = satu session_id v4 (kunci sejarah chat KR-3)."""
@@ -107,6 +120,12 @@ async def _on_message(message: cl.Message) -> None:
     # Laluan tanpa token (penolakan gerbang skor — selesai <1 s): Message()
     # belum pernah di-send, update() tidak memunculkannya di UI → send baru.
     streaming.content = answer.content + _footnotes(citations or answer.citations)
+    if answer.is_refusal:
+        # Sprint 6 (review Sprint 5): strip merah kiri untuk penolakan —
+        # Chainlit tidak memancarkan kelas `.refusal`, jadi kita pin pencetus
+        # CSS via blockquote markdown (`> ` → elemen <blockquote>) yang di-
+        # gaya 2pt accent di public/swiss.css. Ayat baku kekal verbatim.
+        streaming.content = _refusal_blockquote(answer.content)
     if streamed:
         await streaming.update()
     else:

@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     ingest_inbox_path: str = "/data/inbox"
     ingest_poll_interval_s: float = Field(default=2.0, gt=0)
     ingest_max_attempts: int = Field(default=2, ge=1)
+    # Sprint 6 (Backlog): rescue-scan berkala — watchdog boleh lambat beberapa
+    # saat pada mount Windows→Linux; in-memory mtime map hanya mengantre fail
+    # baru/berubah. 0 = matikan fallback (watchdog event-only).
+    ingest_rescan_interval_s: float = Field(default=15.0, ge=0)
 
     # --- Retrieval ---
     retriever_top_k: int = Field(default=4, ge=1)
@@ -57,6 +61,15 @@ class Settings(BaseSettings):
     # KR-3: N mesej terakhir sejarah yang dimuat ke prompt (6 mesej = 3 pasangan
     # soalan-jawaban; N dihitung MESEJ, bukan giliran — review sprint 4).
     chat_history_turns: int = Field(default=6, ge=0)
+
+    # --- Auth & rate limit (Sprint 6 KR-1) ---
+    # API key pilihan: kosong → tanpa autentikasi (dev). Diisi → semua route API
+    # (kecuali /health) wajib bawa header (default `X-API-Key`) yang tepat.
+    api_key: str = ""
+    api_key_header: str = "X-API-Key"
+    # Had kadar per-sesi (permintaan/menit, sliding window in-process).
+    # 0 = matikan had — dibenarkan untuk benchmark & penilaian.
+    rate_limit_rpm: int = Field(default=60, ge=0)
 
     # --- Server ---
     host: str = "0.0.0.0"

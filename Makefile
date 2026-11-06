@@ -84,7 +84,7 @@ restore:
 	bash scripts/restore.sh
 
 mem:
-	scripts/mem_probe.sh
+	$(EXEC) bash scripts/mem_probe.sh
 
 # --- app runtime (dev server di dalam container; port 8000 dipetakan) ---
 # PYTHONPATH=/workspace/src: pakej `app` hidup di src-layout, `uv run uvicorn`

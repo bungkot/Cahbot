@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, cast
 
 from watchdog.events import FileSystemEvent
@@ -88,6 +89,7 @@ class MemoryJobStore:
         self._seq = 0
         self._rows: dict[int, dict[str, Any]] = {}
         self.done_ids: list[int] = []
+        self.requeued_ids: list[int] = []
 
     async def enqueue(self, path: str) -> int:
         self._seq += 1
@@ -120,6 +122,21 @@ class MemoryJobStore:
 
     async def list_jobs(self, limit: int = 50) -> list[IngestJob]:
         return [self._as_job(job_id) for job_id in list(self._rows)[:limit]]
+
+    async def requeue_stuck(self, reason: str) -> int:
+        """Replikasi SQL: `running` → `pending` + error disimpan (Sprint 6)."""
+
+        restored = 0
+        for job_id, row in self._rows.items():
+            if row["status"] == "running":
+                row["status"] = "pending"
+                row["error"] = reason
+                self.requeued_ids.append(job_id)
+                restored += 1
+        return restored
+
+    async def ping(self) -> bool:
+        return True
 
     def _as_job(self, job_id: int) -> IngestJob:
         row = self._rows[job_id]
@@ -267,3 +284,51 @@ async def test_alur_penuh_dokumen_sah() -> None:
     await runner._process(job)  # pyright: ignore[reportPrivateUsage]
     assert store.done_ids == [job.id]
     assert store._rows[job.id]["status"] == "done"
+
+
+# --- Sprint 6 KR-2: boot-resume job tertinggal --------------------------------
+
+
+async def test_requeue_stuck_hanya_sasarkan_job_running() -> None:
+    """Job `running` yang ditinggalkan proses mati satu-satunya sasaran."""
+
+    _, store = _runner()
+    await store.enqueue("selesai.pdf")
+    await store.enqueue("tergantung.pdf")
+    done = await store.claim_pending()
+    stuck = await store.claim_pending()
+    assert done is not None and stuck is not None
+    await store.mark_done(done.id)
+
+    recovered = await store.requeue_stuck("boot-resume")
+    assert recovered == 1
+    assert store._rows[done.id]["status"] == "done"
+    assert store._rows[stuck.id]["status"] == "pending"
+    assert store._rows[stuck.id]["error"] == "boot-resume"
+    assert store.requeued_ids == [stuck.id]
+    # tiada `running` lagi — panggilan kedua no-op
+    assert await store.requeue_stuck("boot-resume-2") == 0
+
+
+async def test_rescan_existing_hanya_fail_baru_atau_berubah(tmp_path: Path) -> None:
+    """Peek-and-poll: mtime map — fail sama tidak diantrekan dua kali."""
+
+    store = MemoryJobStore()
+    runner = StubbedRunner(
+        ingest=_ingest_use_case(),
+        job_store=store,  # pyright: ignore[reportArgumentType]
+        inbox_root=str(tmp_path),
+        poll_interval_s=0.01,
+        max_attempts=2,
+        rescan_interval_s=15.0,
+    )
+    (tmp_path / "a.pdf").write_bytes(b"isi a")
+    (tmp_path / "b.tmp").write_bytes(b"fail temp - dilangkau")
+
+    rescued_first = await runner._rescan_existing()  # pyright: ignore[reportPrivateUsage]
+    assert rescued_first == 1
+    rescued_again = await runner._rescan_existing()  # pyright: ignore[reportPrivateUsage]
+    assert rescued_again == 0  # mtime sama — tidak diantre semula
+    (tmp_path / "c.pdf").write_bytes(b"isi c")
+    rescued_new = await runner._rescan_existing()  # pyright: ignore[reportPrivateUsage]
+    assert rescued_new == 1

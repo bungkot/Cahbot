@@ -66,6 +66,20 @@ ORDER BY created_at DESC, id DESC
 LIMIT $1
 """
 
+# Sprint 6 KR-2: job `running` yang dibawa oleh proses yang MATI tidak akan
+# pernah di-mark — kembalikan ke `pending` saat startup (attempts dikekalkan
+# agar fail yang gagal berulang tumbang natural ke `failed`).
+_REQUEUE_STUCK_SQL = """
+UPDATE ingest_jobs
+SET status = 'pending', error = $1, updated_at = now()
+WHERE id IN (
+    SELECT id FROM ingest_jobs WHERE status = 'running' FOR UPDATE SKIP LOCKED
+)
+RETURNING id
+"""
+
+_PING_SQL = "SELECT 1"
+
 
 class PgIngestJobRepository:
     """Implementasi `application.ports.IngestJobStore` di atas tabel ingest_jobs."""
@@ -111,6 +125,19 @@ class PgIngestJobRepository:
         async with self._pool.acquire() as conn:
             rows: list[asyncpg.Record] = await conn.fetch(_LIST_SQL, limit)
         return [self._to_job(r) for r in rows]
+
+    async def requeue_stuck(self, reason: str) -> int:
+        async with self._pool.acquire() as conn:
+            rows: list[asyncpg.Record] = await conn.fetch(_REQUEUE_STUCK_SQL, reason[:500])
+        count = len(rows)
+        if count:
+            logger.info("jobs_requeued_on_boot", recovered=count, reason=reason[:120])
+        return count
+
+    async def ping(self) -> bool:
+        async with self._pool.acquire() as conn:
+            val: int | None = await conn.fetchval(_PING_SQL)
+        return val == 1
 
     def _to_job(self, row: asyncpg.Record) -> IngestJob:
         return IngestJob(

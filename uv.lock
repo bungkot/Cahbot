@@ -3446,16 +3446,6 @@ dependencies = [
     { name = "watchdog" },
 ]
 
-[package.optional-dependencies]
-dev = [
-    { name = "mypy" },
-    { name = "playwright" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-playwright" },
-    { name = "ruff" },
-]
-
 [package.dev-dependencies]
 app = [
     { name = "asyncpg" },
@@ -3495,23 +3485,16 @@ requires-dist = [
     { name = "langchain-text-splitters" },
     { name = "llama-cpp-python" },
     { name = "markitdown" },
-    { name = "mypy", marker = "extra == 'dev'" },
     { name = "numpy" },
     { name = "onnxruntime" },
-    { name = "playwright", marker = "extra == 'dev'" },
     { name = "pydantic-settings" },
     { name = "pymupdf4llm" },
-    { name = "pytest", marker = "extra == 'dev'" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'" },
-    { name = "pytest-playwright", marker = "extra == 'dev'" },
     { name = "python-multipart" },
-    { name = "ruff", marker = "extra == 'dev'" },
     { name = "structlog" },
     { name = "tokenizers" },
     { name = "uvicorn" },
     { name = "watchdog" },
 ]
-provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 app = [

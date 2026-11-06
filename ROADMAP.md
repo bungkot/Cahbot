@@ -97,26 +97,25 @@ Status: ✅ tamat (KR-1–KR-4 ✅ + DoD; /rules review LULUS — lihat bukti ba
 - **DoD bukti penutupan (2026-11-06):** gerbang rilis penuh `passed=True` (hasil `eval/results/20261106-103634.json` — recall@4 = 1.00, MRR@4 = 1.00, refusal_precision gerbang = 1.00, p50/p95 = 11.4/15.9 ms); **smoke LULUS** (`/health` → ingest PDF buatan → job done → korpus dibersihkan semula); **e2e Playwright 3/3 LULUS semula selepas pengemaskinian adapter** (`tests/e2e/test_sprint5.py`); **lint + ruff-format + mypy strict + unit 51 LULUS** (gerbang kualiti dalam container). **`/rules` review LULUS, tiada isu kritikal** — isu major (ketiadaan ujian unit `release_gate()`) DITAMAT dengan `tests/unit/test_eval_gate.py` (10 kes: boundary ambang, gate kosong via monkeypatch, sanity n_refusal/n_golden, latency); isu minor ditampung: baca lampiran 50 MB → `asyncio.to_thread`, ralat dalaman tidak diluluskan mentah ke UI (log sahaja), pengiraan gerbang disatukan ke `release_gate()` satu-sumber, komen kontrak latency retrieval-only, marker `e2e` pyproject dikemas; minor yang DIBAWA ke Backlog: strip merah penolakan CSS (Chainlit tidak memancarkan kelas `.refusal`), CORS wildcard `.chainlit/config.toml`, integrasi CI harian.
 
 ## Sprint 6 — Hardening & polish (target: 3 days)
-Status: ☐ todo
-- [ ] Simple auth policy (optional API key via env) + per-session rate limit
-- [ ] Graceful shutdown (drain the pool, stop jobs) + HTTP timeout/retry tests
-- [ ] RAM/latency tuning (`make mem` profile, record result distributions)
-- [ ] Document the final runbook update + newly found troubleshooting entries
-- [ ] Simple CI (lint + mypy + unit) — GitHub Actions
-- [ ] Tag the v0.1.0 release (tag + a short CHANGELOG)
+Status: ✅ tamat (KR-1–KR-6 + review `/rules` selesai — pasca-review: pembandingan kunci `hmac.compare_digest`, had kadar dakwaan kunci IP (anti rotasi `session_id`) + sempad kunci `10k` + trim task lifespan, worker `_process` tahan blip DB, shutdown tak skip drain saat worker task mati sebenar; gate hijau: ruff/format + mypy strict 65 fail + unit 68 + integration 11 + e2e 8/8 + smoke LULUS + eval gerbang rilis `passed=True` — recall@4=1.00, refusal_precision gerbang=1.00)
+- [x] **KR-1** Simple auth policy + per-session rate limit — `Settings.API_KEY` (kosong = off) → header `X-API-Key` disemak masa-malar (`adapters/security.py:ApiKeyGuard`, 401); `RATE_LIMIT_RPM` sliding window 60 s per session_id (badan `/chat`) / IP → 429; `/health` kekal terbuka (load-balancer); `.env.example` + runbook dikemas. 10 ujian unit baharu (deterministik, clock disuntik).
+- [x] **KR-2** Graceful shutdown + HTTP tests — lifespan: worker dibatalkan → pool asyncpg di-drain dgn had masa 10 s (`Container.pool_closer` + `PgVectorRepository.close`); boot-resume `requeue_stuck()` (port + repo; FOR UPDATE SKIP LOCKED) — job id 90/123 `running` sisa crash provisipulihkan → `done` (bukti smoke); `/health` kini ping DB → `database: ok/unreachable` (degraded, bukan 500 saat DB turun); `tests/unit/test_hardening.py` — antara lain rantai shutdown dipancarkan sekali.
+- [x] **KR-3** RAM/latency — `scripts/mem_probe.sh` + `make mem` (dijalankan di container); nilai direkam runbook: RSS ~2002 MB, /chat p50/p95 = 27.3/34.8 s (LLM 1.7B CPU), retrieval-only p50/p95 = 15.6/20.4 ms; interpretasi didokumen (latensi dominan generasi, retrieval ms).
+- [x] **KR-4** runbook akhir + troubleshooting baharu (boot-resume, pkill self-match, ps truncation, Docker Desktop engine blip, RSS baseline, auth env) — § "Sprint 6 — Hardening evidence".
+- [x] **KR-5** CI — `.github/workflows/ci.yml` (setup-uv, ruff, ruff format, mypy strict, pytest -m unit; integration/e2e/eval dikekalkan di build di dev container).
+- [x] **KR-6** Tag rilis — `CHANGELOG.md` v0.1.0 ditulis; review `/rules` LULUS DENGAN SYARAT (3 major) — semua dibetulkan sebelum tag: pembandingan kunci `hmac.compare_digest` (otentikasi benar rata); had kadar dikunci ke IP klien (rotasi `session_id` klien tidak mengelak had) + sempad memori `_MAX_SESSIONS` dibuat + trim task di lifespan; `worker._process` tidak membunuh worker saat blip mark_* DB; shutdown menangkap kegagalan `worker_task` sebelum drain — tag `v0.1.0` diambil selepas gate hidup muktamad.
+- **Definition of done**: gerbang kualiti + smoke + eval hijau; runbook akhir; CHANGELOG — ✅ semua met.
 
 ## Backlog (post-release / optional)
-- (Sprint 5, review) Strip merah penolakan di `public/swiss.css` (`.cl-message:has(...)`) berkemungkinan besar TIDAK aktif — Chainlit tidak memancarkan kelas `.refusal`; tanda status perlu dilaksanakan pada adapter (jalankan masa Sprint 6, rujukan docs/conventions/ui.md § Refusal).
-- (Sprint 5, review) `.chainlit/config.toml` `allow_origins = ["*"]` (CORS wildcard) — ketatkan semasa isu-auth Sprint 6.
-- (Sprint 5) Faithfulness (≥ 0.90) ke dalam runner — deterministik ngram-claim check + pensampelan manuale; kini dinilai manuale per demo (lihat docs/eval.md § Sprint 5 verification nota bukti).
-- (Sprint 5) `/eval` sebagai job workflow harian (regresi > 5% = merge blocked); gerbang mutlak sudah hidup dalam `run_eval.py` — tinggal integrasi CI (Sprint 6).
+- Faithfulness (≥ 0.90) ke dalam runner — deterministik ngram-claim check + pensampelan manuale; kini dinilai manuale per demo (lihat docs/eval.md § Sprint 5 verification nota bukti).
+- `/eval` sebagai job workflow harian (regresi > 5% = merge blocked); gerbang mutlak sudah hidup dalam `run_eval.py` — tinggal workflow harian CI (ci.yml Sprint 6 tidak menjalankan eval — butuh DB/model).
+- (Sprint 4, jurang model) `g011` borderline menghalusinasi nombor dasar (cosine 0.8864 di atas ambang 0.82) — dikecualikan gerbang (`KNOWN_GAP_IDS = {g011}`); iterasi prompt/model lebih besar sebelum rilis seterusnya (bukti docs/eval.md § Sprint 4 verification).
 - Satukan test-runner: jalankan `pytest -q` SATU proses (unit+integration+e2e) — kini konflik pytest-asyncio × pytest-playwright (loop dikongsi; `RuntimeError: Runner.run() cannot be called from a running event loop`). Gate sebuah sementara: check-all + marker berasingan (pre-existing, bukan Sprint 3).
-- Watchdog lewat beberapa saat untuk fail baru pada mount Windows→Linux (peek-and-poll fallback?). POST `/ingest` bekerja sebagai laluan operasi terdekat — selesai di Sprint 6 hardening.
 - (review Sprint 3) eval: try/except per kes → `CaseResult` bercatatan supaya satu kes rosak tidak gugurkan agregat penuh; normalisasi nama sumber agar tak senyap-skor 0.
 - (Sprint 4) FTS `plainto_tsquery` (semantik AND) membuat lane sparse sering kosong untuk frasa BM semula jadi — pertimbangkan semantik OR / multi-tsquery; kini hybrid efektifnya hanya lane dense untuk soalan biasa.
 - (Sprint 4) `search_dense`/`search_dense_scored` hampir pendua (SQL kembar) — cari satu pembina kongsi.
-- (Sprint 4) job `running` yang tertinggal bila proses mati tidak dipulihkan saat-startup (requeue stuck-on-boot).
-- (review Sprint 3) eval wiring menyalin container composition (model path/pool/hnsw) — pertimbangkan kongsi factory kecil bersama `build_production_container`.
+- Auth/rate-limit stateless: API key tunggal + kaunter in-process — kalau penskalaan melintang (lebih 1 worker), beralih ke shared store (Redis) / per-kunci-identiti.
+- eval wiring menyalin container composition (model path/pool/hnsw) — pertimbangkan kongsi factory kecil bersama `build_production_container`.
 - Optional reranker (bge-reranker ONNX CPU) — only if Recall@4 < 0.75 without the reranker → a measured decision, not a default (ADR D4).
 - Scanned PDF ingest (light OCR) if the corpus requires it.
 - Multi-tenant: multiple collections/namespaces in chunks.

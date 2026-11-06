@@ -83,15 +83,20 @@ class InboxWatchdogRunner:
         inbox_root: str,
         poll_interval_s: float = 2.0,
         max_attempts: int = 2,
+        rescan_interval_s: float = 15.0,
     ) -> None:
         self._ingest = ingest
         self._store = job_store
         self._root = inbox_root
         self._poll_interval = poll_interval_s
         self._max_attempts = max_attempts
+        # Sprint 6: rescue-scan berkala (peek-and-poll) mit mtime map —
+        # kelewatan watchdog event pada mount Windows→Linux di-toleransi.
+        self._rescan_interval = max(rescan_interval_s, 0.0)
         self._loop: asyncio.AbstractEventLoop | None = None
         # watchdog Observer = alias dinamis (tanpa stub stabil) — sesuai override mypy.
         self._observer: Any = None
+        self._seen_mtime: dict[str, float] = {}  # rel posix → mtime diproses
 
     def enqueue(self, rel_path: str) -> None:
         """Dipanggil dari thread Watchdog → coroutine enqueue di loop utama."""
@@ -124,16 +129,57 @@ class InboxWatchdogRunner:
             logger.info("watchdog_stopped")
 
     async def _scan_existing(self) -> None:
-        """Saat startup: samakan file yang terlewat saat worker mati (boot-resume)."""
+        """Saat startup: samakan file yang terlewat saat worker mati (boot-resume).
+
+        Sprint 6: mtime map in-memory dibina di sini — rescans berikutnya hanya
+        mengantre fail yang dianggap baru atau berubah.
+        """
 
         root = Path(self._root)
         for path in sorted(root.rglob("*")):
             name = path.name
             if path.is_file() and not is_temp_file(name):
                 rel = normalize_inbox_path(str(path), self._root)
+                self._remember_mtime(rel, path)
                 await self._store.enqueue(rel)
 
+    async def _rescan_existing(self) -> int:
+        """Peek-and-poll fallback: hanya fail baru/berubah (sejak mtime) diantrekan.
+
+        Kembalikan bilangan fail yang di-rescue; 0 = tiada berita.
+        """
+
+        rescued = 0
+        root = Path(self._root)
+        try:
+            paths = sorted(root.rglob("*"))
+        except OSError as exc:
+            logger.warning("rescan_failed", error=str(exc))
+            return 0
+        for path in paths:
+            if not path.is_file() or is_temp_file(path.name):
+                continue
+            rel = normalize_inbox_path(str(path), self._root)
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                mtime = -1.0
+            if self._seen_mtime.get(rel) == mtime:
+                continue  # sudah wujud dan tidak berubah
+            self._seen_mtime[rel] = mtime
+            await self._store.enqueue(rel)
+            rescued += 1
+        return rescued
+
+    def _remember_mtime(self, rel: str, path: Path) -> None:
+        try:
+            self._seen_mtime[rel] = path.stat().st_mtime
+        except OSError:
+            self._seen_mtime[rel] = -1.0
+
     async def _poll_loop(self) -> None:
+        elapsed_since_rescan = 0.0
+        rescan_every = self._rescan_interval if self._rescan_interval > 0 else float("inf")
         while True:
             try:
                 job = await self._store.claim_pending()
@@ -143,22 +189,46 @@ class InboxWatchdogRunner:
                 continue
             if job is None:
                 await asyncio.sleep(self._poll_interval)
+                elapsed_since_rescan += self._poll_interval
+                if elapsed_since_rescan >= rescan_every:
+                    elapsed_since_rescan = 0.0
+                    rescued = await self._rescan_existing()
+                    if rescued:
+                        logger.info("rescanned_inbox", rescued=rescued)
                 continue
-            await self._process(job)
+            try:
+                # Review Sprint 6: pertahanan terakhir — kegagalan _process
+                # yang tersisa tidak boleh membunuh poll loop.
+                await self._process(job)
+            except Exception as exc:
+                logger.error("job_process_unexpected_error", job_id=job.id, error=str(exc)[:500])
+            elapsed_since_rescan = 0.0  # aksi fail baru — delay rescan semula
 
     async def _process(self, job: IngestJob) -> None:
+        """Proses satu job — JANGAN pernah membiarkan ralat naik ke poll loop
+        (review Sprint 6): blip DB pada mark_* dulu membunuh worker senyap.
+        Job pada `running` yang tak terselamat dipulihkan boot-resume."""
+
         log = logger.bind(job_id=job.id, path=job.path, attempt=job.attempts)
         log.info("job_started")
         try:
             data = await asyncio.to_thread(self._read_bytes, job.path)
             await self._ingest.execute(data, source=job.path)
-        except Exception as exc:  # file hilang/pecah — worker tidak boleh mati
-            requeued = await self._store.mark_failed_or_retry(
-                job.id, str(exc), max_attempts=self._max_attempts
-            )
+        except Exception as exc:  # file hilang/pecah/DB — worker tidak boleh mati
+            try:
+                requeued = await self._store.mark_failed_or_retry(
+                    job.id, str(exc), max_attempts=self._max_attempts
+                )
+            except Exception as mark_exc:  # DB blip — biarkan `running`
+                log.error("job_mark_failed_error", mark_error=str(mark_exc), error=str(exc)[:500])
+                return
             log.warning("job_failed", error=str(exc)[:500], requeued=requeued)
             return
-        await self._store.mark_done(job.id)
+        try:
+            await self._store.mark_done(job.id)
+        except Exception as exc:  # DB blip selepas ingest berjaya
+            log.error("job_mark_done_error", error=str(exc))
+            return
         log.info("job_done")
 
     def _read_bytes(self, rel_path: str) -> bytes:

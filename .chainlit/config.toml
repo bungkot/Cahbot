@@ -7,7 +7,10 @@
 [project]
 session_timeout = 3600
 cache = false
-allow_origins = ["*"]
+# Sprint 6 (review Sprint 5): CORS ditaatkan — bakaan bawaan `["*"]` dibuang.
+# Chainlit membenarkan asal-sama (same-origin) bila senarai kosong; tambah
+# origin luar HANYA bila UI di-layani untuk kertas lain (rujuk runbook).
+allow_origins = ["http://localhost:8000"]
 
 [features]
 unsafe_allow_html = false

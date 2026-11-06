@@ -27,15 +27,9 @@ dependencies = [
     "chainlit",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "ruff",
-    "mypy",
-    "pytest",
-    "pytest-asyncio",
-    "pytest-playwright",
-    "playwright",
-]
+# Alat dev hanyalah `[dependency-groups]` (PEP 735, dipakai uv) — tidak lagi
+# diduplikasi di [project.optional-dependencies] (review Sprint 6: risiko
+# mengabaikan tak sinkron antara dua takaran dev yang berbeza).
 
 [dependency-groups]
 dev = [

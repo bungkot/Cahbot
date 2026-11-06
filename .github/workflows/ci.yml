@@ -1,0 +1,40 @@
+# rag-mvp CI (Sprint 6 KR-5) — gerbang minimum: lint + mypy strict + unit.
+# Integration/e2e/eval tidak dijalankan di CI (butuh Docker + model lokal —
+# golden rule #2); gerbang rilis penuh dikekalkan di dev container (make).
+name: ci
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sync dependencies (dev)
+        run: uv sync --group dev
+
+      - name: Ruff lint
+        run: uv run ruff check src tests scripts
+
+      - name: Ruff format check
+        run: uv run ruff format --check src tests scripts
+
+      - name: mypy strict
+        run: uv run mypy src tests
+
+      - name: Unit tests
+        run: uv run pytest -m unit -q

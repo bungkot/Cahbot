@@ -101,6 +101,20 @@ class IngestJobStore(Protocol):
 
     async def list_jobs(self, limit: int = 50) -> list[IngestJob]: ...
 
+    async def requeue_stuck(self, reason: str) -> int:
+        """Pulihkan job `running` tertinggal proses mati → `pending` (Sprint 6).
+
+        Dipanggil SEKALI saat startup, SEBELUM worker mula memetik — job yang
+        klaim oleh proses lampau tak akan berjalan lagi. Kembalikan bilangan
+        job yang dikembalikan. `attempts` dikekalkan: fail yang berulang-ulang
+        jelas akan tumbang ke `failed` lewat `mark_failed_or_retry`.
+        """
+        ...
+
+    async def ping(self) -> bool:
+        """DB hidup? — SELECT 1 di atas pool (kesihatan /health, Sprint 6)."""
+        ...
+
 
 class DocumentParser(Protocol):
     """Parser file → ParsedDocument (PyMuPDF4LLM / MarkItDown; dipilih per ekstensi)."""

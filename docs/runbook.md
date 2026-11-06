@@ -111,6 +111,77 @@ binds it as `$1::regconfig` — fully parametrised).
 recall@4 = 1.00 (10/10), MRR@4 = 1.00, latency p50/p95 = 39/122 ms,
 refusal-tanpa-konteks 0/3 (expected before the Sprint 4 RRF-threshold policy).
 
+## Sprint 6 — Hardening evidence (2026-11-06)
+
+### Boot-resume + graceful shutdown (KR-2)
+
+- Job `running` yang tertinggal apabila proses mati kini dipulihkan otomatis
+  saat startup (`requeue_stuck` di `PgIngestJobRepository`; dipanggil di
+  lifespan SEBELUM worker mula). Bukti: job id 90 & 123 (`running` sisa crash
+  Docker Desktop) kembali ke `pending` dan dituntaskan → `done` dalam
+  log smoke penutupan yang sama.
+- Shutdown: watchdog dibatalkan → pool asyncpg di-drain dengan had masa 10 s
+  (`pool_closer` di Container; timeout → `pool_drain_timeout`, proses tetap
+  keluar). Log `app_stop` TIDAK ditulis sebelum drain selesai.
+- `/health` kini ping DB melalui pool (`health_ping_failed` → `database:
+  unreachable`, status `degraded` — bukan HTTP 500).
+
+### Auth & rate limit (KR-1)
+
+| Env | Kesan |
+|---|---|
+| `API_KEY` (kosong = off) | route API (bukan `/health`) wajib header `X-API-Key` → 401 bila salah |
+| `API_KEY_HEADER` | nama header (default `X-API-Key`) |
+| `RATE_LIMIT_RPM` (0 = off) | sliding window 60 s per klien — kunci dasar IP; session_id (badan `/chat`) sekadar penanda kedua (rotasi sid oleh klien tidak mengelak had) → 429 |
+
+`/health` kekal terbuka (load-balancer; websocket UI tidak membawa header).
+oauth/oidca/Redis tidak diperlukan pada MVP — auth diproses di proses
+sama (ADR D5); penskalaan melintang → Backlog.
+
+### Watchdog rescue-scan (Backlog selesai)
+
+`INGEST_RESCAN_INTERVAL_S` (default 15 s; 0 = off): setiap had waktu poll
+yang lega, folder inbox dibaca semula dengan mtime-map in-memory — hanya fail
+baru/berubah yang diantrekan. Menoleransi kelewatan event Watchdog pada mount
+Windows→Linux; POST `/ingest` kekal sebagai laluan segera.
+
+### RAM/latency profile (KR-3) — `make mem` (scripts/mem_probe.sh)
+
+| Metrik | Nilai (n=4, host 8 GB, WSL 6 GB) |
+|---|---|
+| RSS uvicorn (embedder + GGUF yuklu) | 2002 MB |
+| `/chat` latency p50 / p95 | ~27.3 s / ~34.8 s |
+| retrieval-only p50/p95 (eval runner) | 15.6 / 20.4 ms |
+
+Interpretasi: latensi didominasi generasi LLM 1.7B pada CPU (streaming ~0.7–1
+tok/s); retrieval HNSW murah (ms). Pelarasan lanjut (n_batch, kuantisasi yang
+lebih besar, threads lebih) dahulu diukur dengan `make mem` — jangan meneka.
+
+### CORS Chainlit (Backlog selesai)
+
+`.chainlit/config.toml` `allow_origins = ["http://localhost:8000"]` — wildcard
+`["*"]` dibuang. Saat dilayani di origin lain, mengisi nilai origin
+sebenar (bukan wildcard). Chainlit membenarkan asal-sama bila senarai kosong.
+
+### Penolakan UI — strip merah (Backlog selesai)
+
+Adapter membungkus pesan penolakan dalam markdown blockquote (`> …`) →
+elemen `<blockquote>` — strip merah 2pt dari `public/swiss.css` (Chainlit
+2.12 tidak memancarkan kelas `.refusal`). Pesan baku kekal verbatim; ujian
+e2e mengaskan kehadiran blockquote.
+
+### Troubleshooting — jurnal Sprint 6
+
+| Simptom | Penyebab | Aksi |
+|---|---|---|
+| `/health` `database: unreachable` | pool asyncpg gagal ping | `docker compose logs db`; app tetap hidup (degraded) |
+| uvicorn tidak hidup selepas kontainer dev restart | kontainer `sleep infinity` — app dijalankan manual | `docker exec -d -e PYTHONPATH=/workspace/src cahbot-dev-1 uv run uvicorn app.adapters.api:app --host 0.0.0.0 --port 8000` |
+| `docker exec ... pkill -f uvicorn` membunuh shell sendiri | pola match baris arahan sendiri | pola `'[u]vicorn'` + jalankan kill & start pada exec berasingan |
+| `ps -o args` terpotong bilamana arg panjang | procps truncating tanpa `-ww` | guna `ps -eww` atau `ps -eo comm,rss` |
+| job `running` melekat | proses mati sebelum mark | kini otomatik (`requeue_stuck`); bila perlu manual: `UPDATE ingest_jobs SET status='failed', error='stuck' WHERE status='running';` |
+| Docker Desktop engine 500 di tengah exec | engine flaking | `docker compose --profile dev up -d` semula + mula app manual; data selamat (pgdata volume) |
+| RSS uvicorn membesar mendekati 2 GB | normal — GGUF 939 MB + KV cache n_ctx 4096 + ONNX | `make mem` untuk profil berkala; bukan symptom kecacatan |
+
 ## Sensitive operations (require reading the full runbook + backup)
 
 - Changing the embedding model → procedure in `data-model.md`.

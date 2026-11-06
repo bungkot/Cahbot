@@ -102,3 +102,7 @@ def test_ui_luar_korpus_ditolak_tanpa_sitasi(page: Page) -> None:
     expect(body.get_by_text(REFUSAL).first).to_be_visible(timeout=STREAM_TIMEOUT_MS)
     content = body.inner_text()
     assert "kaki-sitasi (mono):" not in content, "penolakan TIDAK boleh membawa sitasi"
+    # Sprint 6 (review Sprint 5): strip merah via blockquote — pesan penolakan
+    # dibungkus `> ` oleh adapter → elemen <blockquote> yang digaya swiss.css.
+    quote = page.locator("blockquote", has_text="Maaf")
+    expect(quote.first).to_be_visible()

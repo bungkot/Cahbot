@@ -32,7 +32,7 @@ button, input, textarea,
   box-shadow: var(--shadow) !important;
 }
 
-/* bututan utama (kirim) = blok pejalan pejalan merah, teks putih (kontrak #3) */
+/* butang utama (hantar) = blok pepejal merah, teks putih (kontrak #3) */
 button[type="submit"], .cl-send-message button {
   background: var(--accent) !important;
   color: #fff !important;
@@ -65,7 +65,14 @@ button[type="submit"], .cl-send-message button {
   background: var(--paper);
 }
 
-/* pesan penolakan: strip merah kiri (kontrak #2 — pengisaran prompt akata) */
-.cl-message.assistant:has(textarea), .cl-message:has(.refusal) {
+/* pesan penolakan (Sprint 6, review Sprint 5): Chainlit tidak memancarkan
+   kelas `.refusal`, jadi adapter membungkus pesan penolakan dalam markdown
+   blockquote (`> …` → <blockquote>) — strip merah kiri 2pt dijahit di sini.
+   Namanya menyasar `blockquote` global: Chainlit 2.12 tidak memancarkan
+   kelas bekas `.cl-message` yang stabil (disahkan e2e Sprint 6). */
+blockquote {
   border-left: 2pt solid var(--accent);
+  background: var(--paper);
+  margin: 0;
+  padding: 4pt 8pt;
 }

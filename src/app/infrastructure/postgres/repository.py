@@ -51,6 +51,21 @@ class PgVectorRepository:
 
         return self._pool
 
+    async def close(self, timeout_s: float = 10.0) -> None:
+        """Drain pool saat shutdown (Sprint 6 KR-2) — dipanggil di lifespan.
+
+        `execute()` pool harusnya dinaikkan `timeout`; langkah yang tak selesai
+        dalam `timeout_s` detik dianggap tertinggal dan diabaikan (sinkron
+        `pool.terminate()` tidak wujud di asyncpg → close() dipaksa walau pun
+        memerlukan per-connection TCP RST OS-level saat proses keluar).
+        """
+
+        try:
+            await asyncio.wait_for(self._pool.close(), timeout=timeout_s)
+            logger.info("db_pool_closed", timeout_s=timeout_s)
+        except TimeoutError:
+            logger.warning("db_pool_close_timeout", timeout_s=timeout_s)
+
     @classmethod
     async def create_from_env(
         cls,

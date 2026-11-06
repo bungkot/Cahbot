@@ -8,6 +8,7 @@ tests menyuntik double (port stubs) — tidak pernah merakit infra.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -45,6 +46,9 @@ class Container:
     embedder: Embedder
     llm: LLMGateway
     history: ChatHistoryRepository
+    # Sprint 6 KR-2: drain pool saat shutdown (production mengisi; default None
+    # → stub ujian tidak terjejas). Lifespan memanggil dengan had masa.
+    pool_closer: Callable[[], Awaitable[None]] | None = None
 
 
 def build_container(
@@ -55,6 +59,7 @@ def build_container(
     llm: LLMGateway,
     job_store: IngestJobStore,
     history_store: ChatHistoryRepository,
+    pool_closer: Callable[[], Awaitable[None]] | None = None,
 ) -> Container:
     """Komposisi manual: infrastruktur disuntik, use case dirakit di dalam."""
 
@@ -83,6 +88,7 @@ def build_container(
         embedder=embedder,
         llm=llm,
         history=history_store,
+        pool_closer=pool_closer,
     )
 
 
@@ -132,6 +138,7 @@ async def build_production_container(settings: Settings) -> Container:
         llm=llm,
         job_store=job_store,
         history_store=history_store,
+        pool_closer=repo.close,
     )
 
 
