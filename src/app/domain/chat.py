@@ -51,6 +51,7 @@ class RefusalReason(StrEnum):
     """Alasan penolakan jawaban pasti — diharapkan tak ada konteks relevan (golden rule #5)."""
 
     NO_RELEVANT_CONTEXT = "no_relevant_context"
+    LOW_RELEVANCE_SCORE = "low_relevance_score"
     RETRIEVAL_UNAVAILABLE = "retrieval_unavailable"
 
 
@@ -77,3 +78,36 @@ class ChatAnswer:
 
 
 SESSION_ID_PATTERN: Final[str] = r"^[0-9a-fA-F-]{36}$"
+
+
+@dataclass(frozen=True, slots=True)
+class ChatCitationsEvent:
+    """Event stream pertama: sitasi konteks yang memacu jawaban (golden rule #8)."""
+
+    citations: tuple[Citation, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ChatTokenEvent:
+    """Event stream: satu token delta dari LLM."""
+
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class ChatFinalEvent:
+    """Event stream terakhir: jawaban lengkap (grounded atau penolakan)."""
+
+    answer: ChatAnswer
+
+
+ChatStreamEvent = ChatCitationsEvent | ChatTokenEvent | ChatFinalEvent
+
+
+@dataclass(frozen=True, slots=True)
+class ChatMessage:
+    """Satu baris sejarah percakapan (KR-3, tabel chat_messages)."""
+
+    role: str  # 'user' | 'assistant'
+    content: str
+    created_at: str | None = None

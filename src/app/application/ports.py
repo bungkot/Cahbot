@@ -7,9 +7,10 @@ di implementation via asyncio.to_thread (docs/conventions/code.md).
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Protocol
 
-from app.domain.chat import RetrievedContext
+from app.domain.chat import ChatMessage, RetrievedContext
 from app.domain.documents import Chunk, IngestJob, ParsedDocument
 
 
@@ -39,6 +40,16 @@ class VectorRepository(Protocol):
 
     async def search_dense(self, query_embedding: list[float], top_k: int) -> list[tuple[int, int]]:
         """Kembalikan [(document_id, chunk_index)] urut kemiripan cosine (HNSW)."""
+        ...
+
+    async def search_dense_scored(
+        self, query_embedding: list[float], top_k: int
+    ) -> list[tuple[int, int, float]]:
+        """Sama seperti search_dense + cosine similarity `[-1..1]` (KR-4).
+
+        Skor dipakai dasar penolakan — RRF hanya pantulan rank, sedangkan
+        cosine memisahkas soalan jauh-dari-korpus dari terdekat.
+        """
         ...
 
     async def search_sparse(self, query: str, top_k: int) -> list[tuple[int, int]]:
@@ -106,6 +117,14 @@ class Chunker(Protocol):
 class LLMGateway(Protocol):
     """Gateway llama.cpp lokal — menghasilkan jawaban grounded Bahasa Melayu."""
 
+    @property
+    def model_name(self) -> str:
+        """Nama model untuk log KR-5 (`model=...` per permintaan)."""
+        ...
+
+    async def warm_up(self) -> None:
+        """Muat model SEKALI di lifespan (KR-1) — placeholder punya no-op."""
+
     async def generate_grounded(
         self,
         question: str,
@@ -113,4 +132,32 @@ class LLMGateway(Protocol):
         history: tuple[tuple[str, str], ...],
     ) -> str:
         """Jawab HANYA dari konteks; bila memadai → tolak (assertion di use case)."""
+        ...
+
+    def stream_grounded(
+        self,
+        question: str,
+        context: RetrievedContext,
+        history: tuple[tuple[str, str], ...],
+    ) -> AsyncIterator[str]:
+        """Stream token delta jawaban grounded (Sprint 4). Generator async."""
+        ...
+
+
+class ChatHistoryRepository(Protocol):
+    """Sejarah percakapan di Postgres (KR-3; implementasi: postgres.chat).
+
+    Semua query di lapisan ini — parametrised $1..$n (golden rule #4).
+    """
+
+    async def ensure_session(self, session_id: str) -> None:
+        """Pastikan session wujud; INSERT ON CONFLICT DO NOTHING."""
+        ...
+
+    async def append_message(self, session_id: str, role: str, content: str) -> None:
+        """Tambah satu mesej ('user' | 'assistant') ke chat_messages."""
+        ...
+
+    async def recent_messages(self, session_id: str, limit: int) -> list[ChatMessage]:
+        """N mesej terakhir sesi mengikut masa menaik (masa kosong bila sesi tidak ada)."""
         ...

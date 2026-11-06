@@ -1,11 +1,12 @@
-"""Runner eval Sprint 3 — metrik pengambilan semula (tanpa LLM).
+"""Runner eval (Sprint 4) — metrik retrieval + ukuran dasar penolakan (tanpa LLM).
 
 Ukur terhadap golden set (`eval/golden/golden.jsonl`):
-- recall@4 : kes boleh-jawapan dengan chunk dari sumber betul dalam top-4 fusi RRF;
-- MRR@4    : 1/rank pertama chunk dari sumber betul dalam top-4;
-- refusal  : kes `must_refuse` yang *fused* kosong (tiada konteks) — dasar
-             ambang skor RRF tiba pada Sprint 4 (ROADMAP), jadi diharapkan
-             sebagai nota, bukan ambang lepas-utama di sini.
+- recall@4   : kes boleh-jawapan dengan chunk sumber betul dalam top-4 fusi RRF;
+- MRR@4      : 1/rank pertama chunk sumber betul dalam top-4;
+- refusal    : kes `must_refuse` ditolak polisi — konteks kosong ATAU cosine
+               top-1 dense di bawah ambang polisi (`RETRIEVAL_REFUSAL_THRESHOLD`);
+- ambang suggestion: titik tengah jurang cosine (maks-tolak, min-jawab) —
+               dipaparkan supaya default konfigurasi kekal berdasar data.
 
 Output: `eval/results/<timestamp>.json` + ringkasan markdown sebelahnya.
 Jalankan (dalam container dev, stack hidup + korpus sudah di-ingest):
@@ -57,6 +58,8 @@ class CaseResult:
     retrieved_sources: tuple[str, ...]
     latency_ms: float
     note: str = ""
+    # Sprint 4 KR-4: cosine top-1 dense (None bila lane dense kosong).
+    top_cosine: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,9 +72,13 @@ class EvalReport:
     n_answerable: int
     answerable_cases: tuple[CaseResult, ...]
     refused_cases: tuple[CaseResult, ...]
-    refusal_no_context: int
+    refusal_ok: int
     latency_p50_ms: float
     latency_p95_ms: float
+    # Sprint 4 KR-4: jurang cosine → data bagi pilihan ambang (docs/eval.md).
+    refused_max_cosine: float
+    answerable_min_cosine: float
+    threshold_suggestion: float
 
 
 def load_golden(path: Path) -> list[GoldenCase]:
@@ -107,31 +114,46 @@ async def _run_case(
     *,
     top_k: int,
     rrf_k: int,
+    refusal_threshold: float,
 ) -> CaseResult:
-    """Satu kes: embed → dense+sparse → jumlah RRF → ukur kedudukan top-4."""
+    """Satu kes: embed → dense(scored)+sparse → RRF → rank + ukur keputusan polisi."""
 
     start = time.perf_counter()
     embedding = await embedder.embed_query(case.question)
-    dense = await repo.search_dense(embedding, top_k)
+    dense_scored = await repo.search_dense_scored(embedding, top_k)
     sparse = await repo.search_sparse(case.question, top_k)
     latency_ms = (time.perf_counter() - start) * 1000.0
 
+    dense = [(doc_id, chunk_idx) for doc_id, chunk_idx, _cos in dense_scored]
+    # None: lane dense kosong → penolakan cosine tidak beroperasi (seperti use case).
+    top_cosine: float | None = dense_scored[0][2] if dense_scored else None
     fused = fuse_rrf(dense, sparse, rrf_k)[:top_k]
 
     if case.must_refuse:
-        hit = not fused
-        note = "" if hit else "fused tidak kosong — dasar ambang skor bermula Sprint 4"
+        # Polisi KR-4: konteks kosong ATAU cosine di bawah ambang → betul-tolak.
+        kosong = not fused
+        rendah = top_cosine is not None and top_cosine < refusal_threshold
+        refused_by_policy = kosong or rendah
+        note = (
+            ""
+            if refused_by_policy
+            else (
+                "konteks dicari (cosine "
+                + ("tiada-dense" if top_cosine is None else f"{top_cosine:.4f}")
+                + f" ≥ ambang {refusal_threshold:.2f}) — kasus borderline"
+            )
+        )
         return CaseResult(
             id=case.id,
             question=case.question,
-            hit=hit,
+            hit=refused_by_policy,
             rank=0,
             retrieved_sources=(),
             latency_ms=latency_ms,
             note=note,
+            top_cosine=top_cosine,
         )
 
-    # Urut sources mengikut skor fusi (turun) untuk mengira rank MRR.
     rows = await repo.fetch_chunks([key for key, _ in fused])
     src_map = _source_map(rows)
     sources_in_order = tuple(src_map.get(key, "") for key, _score in fused)
@@ -148,7 +170,26 @@ async def _run_case(
         rank=rank,
         retrieved_sources=sources_in_order,
         latency_ms=latency_ms,
+        top_cosine=top_cosine,
     )
+
+
+def _threshold_suggestion(
+    results_ans: list[CaseResult],
+    results_ref: list[CaseResult],
+) -> tuple[float, float]:
+    """(ambang usulan, jurang sah) dari cosine: maks-tolak vs min-jawab.
+
+    0.0 bila jurang tidak wujud/tertindih.
+    """
+
+    refused_max = max((r.top_cosine for r in results_ref if r.top_cosine is not None), default=0.0)
+    answerable_min = min(
+        (r.top_cosine for r in results_ans if r.top_cosine is not None), default=0.0
+    )
+    if answerable_min <= refused_max:
+        return 0.0, 0.0
+    return round((refused_max + answerable_min) / 2.0, 4), answerable_min - refused_max
 
 
 async def evaluate(cases: list[GoldenCase]) -> EvalReport:
@@ -171,11 +212,25 @@ async def evaluate(cases: list[GoldenCase]) -> EvalReport:
         answerable = [c for c in cases if not c.must_refuse]
         refused = [c for c in cases if c.must_refuse]
         results_ans = [
-            await _run_case(c, embedder, repo, top_k=settings.retriever_top_k, rrf_k=settings.rrf_k)
+            await _run_case(
+                c,
+                embedder,
+                repo,
+                top_k=settings.retriever_top_k,
+                rrf_k=settings.rrf_k,
+                refusal_threshold=settings.retrieval_refusal_threshold,
+            )
             for c in answerable
         ]
         results_ref = [
-            await _run_case(c, embedder, repo, top_k=settings.retriever_top_k, rrf_k=settings.rrf_k)
+            await _run_case(
+                c,
+                embedder,
+                repo,
+                top_k=settings.retriever_top_k,
+                rrf_k=settings.rrf_k,
+                refusal_threshold=settings.retrieval_refusal_threshold,
+            )
             for c in refused
         ]
     finally:
@@ -185,6 +240,7 @@ async def evaluate(cases: list[GoldenCase]) -> EvalReport:
     hits = sum(r.hit for r in results_ans)
     rr_sum = sum(1.0 / r.rank for r in results_ans if r.rank > 0)
     latencies = sorted(r.latency_ms for r in (*results_ans, *results_ref))
+    suggestion, _gap = _threshold_suggestion(results_ans, results_ref)
 
     def _pct(data: list[float], p: float) -> float:
         if not data:
@@ -199,13 +255,20 @@ async def evaluate(cases: list[GoldenCase]) -> EvalReport:
         n_answerable=n,
         answerable_cases=tuple(results_ans),
         refused_cases=tuple(results_ref),
-        refusal_no_context=sum(r.hit for r in results_ref),
+        refusal_ok=sum(r.hit for r in results_ref),
         latency_p50_ms=_pct(latencies, 50),
         latency_p95_ms=_pct(latencies, 95),
+        refused_max_cosine=max(
+            (r.top_cosine for r in results_ref if r.top_cosine is not None), default=0.0
+        ),
+        answerable_min_cosine=min(
+            (r.top_cosine for r in results_ans if r.top_cosine is not None), default=0.0
+        ),
+        threshold_suggestion=suggestion,
     )
 
 
-def write_outputs(report: EvalReport) -> tuple[Path, Path]:
+def write_outputs(report: EvalReport, config_threshold: float) -> tuple[Path, Path]:
     """Simpan JSON penuh + markdown ringkasan ke `eval/results/`."""
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -214,29 +277,43 @@ def write_outputs(report: EvalReport) -> tuple[Path, Path]:
     md_path = RESULTS_DIR / f"{stamp}.md"
 
     payload: dict[str, object] = {
-        "phase": "sprint3-retrieval",
+        "phase": "sprint4-grounded",
         "thresholds": {"recall_at_4": RECALL_THRESHOLD, "note": "Sprint 5: 0.80 / MRR 0.65"},
+        "policy_threshold": config_threshold,
         "recall_at_4": round(report.recall_at_4, 4),
         "mrr_at_4": round(report.mrr_at_4, 4),
         "n_answerable": report.n_answerable,
-        "refusal_no_context": report.refusal_no_context,
+        "refusal_ok": report.refusal_ok,
         "n_refused_cases": len(report.refused_cases),
         "latency_p50_ms": round(report.latency_p50_ms, 2),
         "latency_p95_ms": round(report.latency_p95_ms, 2),
+        "refusal_threshold_data": {
+            "refused_max_cosine": round(report.refused_max_cosine, 4),
+            "answerable_min_cosine": round(report.answerable_min_cosine, 4),
+            "suggestion": report.threshold_suggestion,
+        },
         "cases": [asdict(r) for r in (*report.answerable_cases, *report.refused_cases)],
     }
     json_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", "utf-8")
 
     fails = [r for r in report.answerable_cases if not r.hit]
+    borderline = [r for r in report.refused_cases if not r.hit and r.note]
     md = [
-        "# Eval Sprint 3 — retrieval-only",
+        "# Eval Sprint 4 — grounded retrieval",
         "",
         f"- recall@4 = **{report.recall_at_4:.2f}** ({report.recall_hits}/{report.n_answerable})"
         f" — sasaran sprint ≥ {RECALL_THRESHOLD:.2f}",
         f"- MRR@4 = **{report.mrr_at_4:.2f}** (sasaran penuh Sprint 5: ≥ 0.65)",
-        f"- refusal tanpa konteks: {report.refusal_no_context}/{len(report.refused_cases)}"
-        " (dasar ambang skor RRF tiba Sprint 4)",
+        f"- refusal oleh polisi: {report.refusal_ok}/{len(report.refused_cases)}"
+        f" (ambang aktif {config_threshold:.2f})",
         f"- latency retrieval p50/p95 = {report.latency_p50_ms:.0f}ms / {report.latency_p95_ms:.0f}ms",
+        "",
+        "## Data pilihan ambang penolakan (KR-4, cosine top-1 dense)",
+        "",
+        f"- kasus mesti-tolak: maks cosine = {report.refused_max_cosine:.4f}",
+        f"- kasus boleh-jawapan: min cosine = {report.answerable_min_cosine:.4f}",
+        f"- **ambang diukur (aktif) = {config_threshold:.2f}**; usulan tengah-jurang = "
+        f"{report.threshold_suggestion:.4f} (0.0 = jurang tertindih — lihat docs/eval.md)",
         "",
     ]
     if fails:
@@ -244,6 +321,12 @@ def write_outputs(report: EvalReport) -> tuple[Path, Path]:
         md.append("")
         for r in fails:
             md.append(f"- `{r.id}` {r.question!r} → dapat: {r.retrieved_sources or 'tiada'}")
+    if borderline:
+        md.append("")
+        md.append("## Kasus mesti-tolak yang tidak ditangkap ambang (borderline)")
+        md.append("")
+        for r in borderline:
+            md.append(f"- `{r.id}` {r.question!r} — {r.note}")
     md_path.write_text("\n".join(md) + "\n", encoding="utf-8")
     return json_path, md_path
 
@@ -251,15 +334,22 @@ def write_outputs(report: EvalReport) -> tuple[Path, Path]:
 async def main() -> None:
     cases = load_golden(GOLDEN_PATH)
     n_answerable = sum(not c.must_refuse for c in cases)
-    logger.info("eval_start", cases=len(cases), answerable=n_answerable)
+    settings = get_settings()
+    logger.info(
+        "eval_start",
+        cases=len(cases),
+        answerable=n_answerable,
+        policy_threshold=settings.retrieval_refusal_threshold,
+    )
     report = await evaluate(cases)
-    json_path, md_path = write_outputs(report)
+    json_path, md_path = write_outputs(report, settings.retrieval_refusal_threshold)
 
     ok = report.recall_at_4 >= RECALL_THRESHOLD
     logger.info(
         "eval_done",
         recall_at_4=round(report.recall_at_4, 3),
         mrr_at_4=round(report.mrr_at_4, 3),
+        refusal_ok=report.refusal_ok,
         latency_p50_ms=round(report.latency_p50_ms, 1),
         latency_p95_ms=round(report.latency_p95_ms, 1),
         results=str(json_path),
@@ -269,6 +359,7 @@ async def main() -> None:
         "eval_result",
         recall_at_4=round(report.recall_at_4, 3),
         mrr_at_4=round(report.mrr_at_4, 3),
+        refusal_ok=report.refusal_ok,
         latency_p50_ms=round(report.latency_p50_ms, 1),
         latency_p95_ms=round(report.latency_p95_ms, 1),
         results_json=str(json_path),

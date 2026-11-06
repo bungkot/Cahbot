@@ -104,6 +104,32 @@ class PgVectorRepository:
             raise RetrievalError(msg) from exc
         return [(r["document_id"], r["chunk_index"]) for r in rows]
 
+    async def search_dense_scored(
+        self, query_embedding: list[float], top_k: int
+    ) -> list[tuple[int, int, float]]:
+        """search_dense + cosine top (`1 - jarak` — jarak pgvector cosine 0..2)."""
+
+        try:
+            async with self._pool.acquire() as conn:
+                rows: list[asyncpg.Record] = await conn.fetch(
+                    """
+                    SELECT document_id, chunk_index, embedding <=> $1::halfvec AS dist
+                    FROM chunks
+                    WHERE embedding IS NOT NULL
+                    ORDER BY embedding <=> $1::halfvec
+                    LIMIT $2
+                    """,
+                    _embed_literal(query_embedding),
+                    top_k,
+                )
+        except Exception as exc:
+            logger.error("search_dense_scored_failed", error=str(exc))
+            msg = "pengambilan vektor (scored) gagal"
+            raise RetrievalError(msg) from exc
+        return [
+            (int(r["document_id"]), int(r["chunk_index"]), 1.0 - float(r["dist"])) for r in rows
+        ]
+
     async def search_sparse(self, query: str, top_k: int) -> list[tuple[int, int]]:
         try:
             async with self._pool.acquire() as conn:

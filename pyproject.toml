@@ -105,6 +105,11 @@ ignore_missing_imports = true
 module = ["onnxruntime.*", "pymupdf.*", "pymupdf4llm.*", "watchdog.observers.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# llama-cpp-python tanpa py.typed (Sprint 4 gateway)
+module = ["llama_cpp.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
@@ -114,4 +119,5 @@ markers = [
     "e2e: browser tests via Playwright (mockup served locally)",
 ]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 addopts = "-q"

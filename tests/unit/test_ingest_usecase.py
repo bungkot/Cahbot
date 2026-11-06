@@ -63,6 +63,11 @@ class StubRepo:
     ) -> list[tuple[int, int]]:  # pragma: no cover
         return []
 
+    async def search_dense_scored(
+        self, query_embedding: list[float], top_k: int
+    ) -> list[tuple[int, int, float]]:  # pragma: no cover
+        return []
+
     async def search_sparse(
         self, query: str, top_k: int
     ) -> list[tuple[int, int]]:  # pragma: no cover

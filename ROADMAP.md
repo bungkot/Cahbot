@@ -71,13 +71,20 @@ Status: ✅ done — semua KR hijau: gate (ruff/format/mypy strict + 21 unit + 7
   - Nota backlog (pre-existing, bukan Sprint 3): menjalankan SEMUA suite dalam satu proses `pytest -q` mengadakan konflik pytest-asyncio×pytest-playwright (loop dikongsi) — gate dikekalkan check-all + marker berasingan; port tindakan pink ke Backlog bagi pemiwaian integrasi test-runner; juga: watchdog lewat beberapa saat pada mount Windows (POST /ingest/fallback) → di-Backlog.
 
 ## Sprint 4 — Grounded generation (target: 4–5 days)
-Status: ☐ todo
+Status: 🚧 *(semua KR kod selesai & hijau — tertahan hanya pada pengesahan LLM sebenar kerana fail GGUF belum ada di `models/`; lihat nota bawah)*
 - **KR-1 LLM gateway** — `infrastructure/llama_cpp_gateway.py`: load the model once at lifespan (n_ctx=4096, n_batch=256, threads=4), `asyncio.to_thread`, streamed tokens.
+  - [x] `LlamaCppGateway` (warm_up sekali-lifespan, streaming token delta via `to_thread`, `model_name` untuk log KR-5); komposisi `core/container`: GGUF wujud → gateway, tiada → `PlaceholderLLMGateway` + warning (app tetap hidup, tanpa halusinasi — golden rule #5). ⏸ **verifikasi LLM sebenar menunggu operator meletakkan qwen3-1.7b-q4_k_m.gguf di `models/` (larangan offline — TIDAK boleh di-download dari app)**
 - **KR-2 Grounded prompt (Malay)** — builder in `application/`: answer ONLY from context; explicit citations `[sumber: fail, bahagian ke-N]`; standard refusal when context is insufficient; temperature 0.2, max_tokens 512.
+  - [x] `application/grounded_prompt.py` — SYSTEM_PROMPT BM (jawab HANYA dari konteks, sitasi `[sumber: fail, bahagian ke-N]` basis-1, pesan penolakan baku verbatim); 6 uji unit
 - **KR-3 History** — store `chat_sessions`/`chat_messages` (new repo, parametrised SQL); load the last N turns; endpoint `/sessions/{id}/messages`.
+  - [x] `PgChatHistoryRepository` (ensure idempoten / append / recent N urut menaik; SQL parametris penuh) + 3 ujian integration; `ChatUseCase._load_history/_persist` (kegagalan simpan → warning, chat tidak gagal); endpoint GET `/sessions/{id}/messages` (limit ≤50, uuid di-validate → 400); **cengah regresi: `execute()` kini menghabiskan aliran (return-tengah-loop menahan generator → persist tidak berjalan) + ujian**
 - **KR-4 Refusal policy** — ChatUseCase: RRF score below threshold → `ChatAnswer.refused()`; the UI displays the refusal message.
+  - [x] **(nb. diperbaiki-sesudah-diukur)**: ambang atas *skor RRF* terbukti TIDAK terpisah pada korpus seed (semua kasus 1/61; lane FTS hampir sentiasa kosong — `plainto_tsquery` semantik AND); isyarat diganti **cosine top-1 dense** `search_dense_scored` (port + repo; parametris penuh) → ambang `RETRIEVAL_REFUSAL_THRESHOLD=0.82` dari data golden (JAWAB-min 0.8503; TOLAK-maks-sisa 0.8067): penolakan 2/3 oleh gerbang skor; kasus borderline `g011` (0.8864) dijahit lapisan prompt (grounded refusal) — data & keputusan di `docs/eval.md`
+  - [x] aliran event: `ChatCitationsEvent` → `ChatTokenEvent*` → `ChatFinalEvent`; `/chat?stream=true` SSE (`citations → token* → final`) — bingkai JSON bersih (bug dobel-encode telah dicengah)
 - **KR-5 Observability** — per-request logs: `session_id`, `model`, `latency_ms`, tokens/s (structlog), middleware adding `session_id` to all logs.
+  - [x] `chat_done` (session_id/model/latency_ms/n_chunks/history_turns/refused) + `request_id` middleware contextvars; `llm_generated` tokens/s (gateway); `retrieval_fused` top1_cosine
 - **Definition of done**: `/chat` streaming + citations in the response model; answers outside the corpus are 100% refused; clean EXPLAIN & logs.
+  - ✅ sebahagian met: gerbang penuh hijau (ruff/format/mypy strict + 35 unit + 11 integration); smoke LULUS (ingest + jobs); API manual: JSON + SSE + refusal + sejarah + 400 bad-uuid; eval recall@4=1.00/MRR@4=1.00/refusal polisi 2/3 (docs/eval.md); logs lengkap. ⏸ **baki: jawapan grounded LLM sebenar + sahkan lapisan prompt menolak `g011` — blokir pada GGUF (KR-1 nota); bukan kerja kod**
 
 ## Sprint 5 — Production UI (Chainlit OR custom, per the Sprint 1 decision) + passing eval (target: 3–4 days)
 Status: ☐ todo
@@ -100,6 +107,9 @@ Status: ☐ todo
 - Satukan test-runner: jalankan `pytest -q` SATU proses (unit+integration+e2e) — kini konflik pytest-asyncio × pytest-playwright (loop dikongsi; `RuntimeError: Runner.run() cannot be called from a running event loop`). Gate sebuah sementara: check-all + marker berasingan (pre-existing, bukan Sprint 3).
 - Watchdog lewat beberapa saat untuk fail baru pada mount Windows→Linux (peek-and-poll fallback?). POST `/ingest` bekerja sebagai laluan operasi terdekat — selesai di Sprint 6 hardening.
 - (review Sprint 3) eval: try/except per kes → `CaseResult` bercatatan supaya satu kes rosak tidak gugurkan agregat penuh; normalisasi nama sumber agar tak senyap-skor 0.
+- (Sprint 4) FTS `plainto_tsquery` (semantik AND) membuat lane sparse sering kosong untuk frasa BM semula jadi — pertimbangkan semantik OR / multi-tsquery; kini hybrid efektifnya hanya lane dense untuk soalan biasa.
+- (Sprint 4) `search_dense`/`search_dense_scored` hampir pendua (SQL kembar) — cari satu pembina kongsi.
+- (Sprint 4) job `running` yang tertinggal bila proses mati tidak dipulihkan saat-startup (requeue stuck-on-boot).
 - (review Sprint 3) eval wiring menyalin container composition (model path/pool/hnsw) — pertimbangkan kongsi factory kecil bersama `build_production_container`.
 - Optional reranker (bge-reranker ONNX CPU) — only if Recall@4 < 0.75 without the reranker → a measured decision, not a default (ADR D4).
 - Scanned PDF ingest (light OCR) if the corpus requires it.

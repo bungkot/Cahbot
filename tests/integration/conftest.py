@@ -61,6 +61,26 @@ DDL_STATEMENTS: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_ingest_jobs_status_created ON ingest_jobs(status, created_at)",
     "CREATE TABLE IF NOT EXISTS _fts_config (name TEXT PRIMARY KEY, resolved TEXT NOT NULL)",
     "INSERT INTO _fts_config (name, resolved) VALUES ('fts_config', 'simple')",
+    # Sprint 4 KR-3: tabel sejarah percakapan (setara 001_schema.sql 61-75)
+    """
+    CREATE TABLE IF NOT EXISTS chat_sessions (
+        id         UUID PRIMARY KEY,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS chat_messages (
+        id         BIGSERIAL PRIMARY KEY,
+        session_id UUID NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+        role       TEXT NOT NULL,
+        content    TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_chat_messages_session_created
+        ON chat_messages(session_id, created_at)
+    """,
 )
 
 
@@ -77,7 +97,7 @@ def dsn() -> str:
 
 @pytest.fixture
 async def pg_db(dsn: str) -> AsyncIterator[str]:
-    """DB ujian sekali-guna per-test; yield DSN koneksi ke DB sirewati itu."""
+    """DB ujian sekali-guna per-test; yield DSN koneksi ke DB sementara itu."""
 
     akronim = hashlib.sha256(os.urandom(8)).hexdigest()[:8]
     db_name = f"test_rag_{akronim}"

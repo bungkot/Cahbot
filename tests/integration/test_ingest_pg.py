@@ -116,6 +116,22 @@ async def test_carian_teks_sparse_dense_mengesan_chunk(pg_db: str) -> None:
     await pool.close()
 
 
+async def test_search_dense_scored_mengembalikan_cosine(pg_db: str) -> None:
+    """Sprint 4 KR-4: scored query membawa cosine top (1 - jarak) dalam [-1, 1]."""
+
+    use_case, _jobs, pool = await _ingest_use_case(pg_db)
+    await use_case.execute(_pdf_bytes(), "uji.pdf")
+    repo = PgVectorRepository(pool, fts_config="simple")
+    scored = await repo.search_dense_scored(_normalized_vector("cuti tahunan"), 4)
+    assert len(scored) >= 1
+    for doc_id, chunk_idx, cosine in scored:
+        assert -1.0 <= cosine <= 1.0
+        assert (doc_id, chunk_idx) in set(
+            await repo.search_dense(_normalized_vector("cuti tahunan"), 4)
+        )
+    await pool.close()
+
+
 async def test_idempotensi_bytes_sama_tidak_menduplikasi(pg_db: str) -> None:
     use_case, _jobs, pool = await _ingest_use_case(pg_db)
     data = _pdf_bytes()

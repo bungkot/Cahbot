@@ -1,5 +1,7 @@
 """Unit: ChatUseCase menyusun konteks ikut budget + top-k (Sprint 3 KR-2)."""
 
+from collections.abc import AsyncIterator
+
 import pytest
 
 from app.application.use_cases.chat import ChatUseCase
@@ -34,6 +36,11 @@ class _StubRepository:
     async def search_dense(self, query_embedding: list[float], top_k: int) -> list[tuple[int, int]]:
         return self._dense[:top_k]
 
+    async def search_dense_scored(
+        self, query_embedding: list[float], top_k: int
+    ) -> list[tuple[int, int, float]]:
+        return [(d, c, 0.90) for d, c in self._dense[:top_k]]
+
     async def search_sparse(self, query: str, top_k: int) -> list[tuple[int, int]]:
         return []
 
@@ -52,6 +59,13 @@ class _StubRepository:
 
 
 class _StubLLM:
+    @property
+    def model_name(self) -> str:
+        return "stub"
+
+    async def warm_up(self) -> None:
+        return None
+
     def __init__(self) -> None:
         self.seen_context: RetrievedContext | None = None
 
@@ -64,18 +78,32 @@ class _StubLLM:
         self.seen_context = context
         return "jawapan"
 
+    def stream_grounded(
+        self,
+        question: str,
+        context: RetrievedContext,
+        history: tuple[tuple[str, str], ...],
+    ) -> AsyncIterator[str]:
+        return self._gen(context)
+
+    async def _gen(self, context: RetrievedContext) -> AsyncIterator[str]:
+        self.seen_context = context
+        yield "jawapan"
+
 
 def _make_use_case(
     dense: list[tuple[int, int]],
     chunks: dict[int, str],
-    **kwargs: int,
+    *,
+    top_k: int = 4,
+    max_context_tokens: int = 2500,
 ) -> tuple[ChatUseCase, _StubLLM]:
     """Susun use case + simpan stub LLM eksplisit (tak sentuh attr peribadi)."""
 
     embedder = _StubEmbedder()
     repo = _StubRepository(dense, chunks)
     llm = _StubLLM()
-    uc = ChatUseCase(embedder, repo, llm, **kwargs)
+    uc = ChatUseCase(embedder, repo, llm, top_k=top_k, max_context_tokens=max_context_tokens)
     return uc, llm
 
 

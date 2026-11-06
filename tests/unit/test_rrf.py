@@ -1,5 +1,7 @@
 """Unit: _fuse_rrf Hybrid Search — rumus score = Σ 1/(rrf_k + rank) (docs/retrieval.md)."""
 
+from collections.abc import AsyncIterator
+
 import pytest
 
 from app.application.use_cases.chat import ChatUseCase
@@ -29,6 +31,11 @@ class _StubRepository:
     async def search_dense(self, query_embedding: list[float], top_k: int) -> list[tuple[int, int]]:
         raise NotImplementedError
 
+    async def search_dense_scored(
+        self, query_embedding: list[float], top_k: int
+    ) -> list[tuple[int, int, float]]:
+        raise NotImplementedError
+
     async def search_sparse(self, query: str, top_k: int) -> list[tuple[int, int]]:
         raise NotImplementedError
 
@@ -47,12 +54,27 @@ class _StubRepository:
 
 
 class _StubLLM:
+    @property
+    def model_name(self) -> str:
+        return "stub"
+
+    async def warm_up(self) -> None:
+        return None
+
     async def generate_grounded(
         self,
         question: str,
         context: RetrievedContext,
         history: tuple[tuple[str, str], ...],
     ) -> str:
+        raise NotImplementedError
+
+    def stream_grounded(
+        self,
+        question: str,
+        context: RetrievedContext,
+        history: tuple[tuple[str, str], ...],
+    ) -> AsyncIterator[str]:
         raise NotImplementedError
 
 

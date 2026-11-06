@@ -49,6 +49,15 @@ class Settings(BaseSettings):
     # Sprint 3 (KR-2): had konteks yang masuk prompt (~2,500 dari n_ctx 4096).
     context_max_tokens: int = Field(default=2500, ge=128)
 
+    # --- Chat (Sprint 4) ---
+    # KR-4: penolakan bila cosine top-1 dense < ambang. Default 0.82 diukur atas
+    # golden set (jawab-min 0.8503; tolak max sisa 0.8067 — docs/eval.md);
+    # untuk mematikan fitur sekali lulus → -1.0.
+    retrieval_refusal_threshold: float = Field(default=0.82, ge=-1.0)
+    # KR-3: N mesej terakhir sejarah yang dimuat ke prompt (6 mesej = 3 pasangan
+    # soalan-jawaban; N dihitung MESEJ, bukan giliran — review sprint 4).
+    chat_history_turns: int = Field(default=6, ge=0)
+
     # --- Server ---
     host: str = "0.0.0.0"
     port: int = 8000

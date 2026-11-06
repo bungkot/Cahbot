@@ -59,6 +59,11 @@ class StubRepo:
     async def search_dense(self, query_embedding: list[float], top_k: int) -> list[tuple[int, int]]:
         return []
 
+    async def search_dense_scored(
+        self, query_embedding: list[float], top_k: int
+    ) -> list[tuple[int, int, float]]:
+        return []
+
     async def search_sparse(self, query: str, top_k: int) -> list[tuple[int, int]]:
         return []
 
