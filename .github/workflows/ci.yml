@@ -1,29 +1,75 @@
-# rag-mvp CI (Sprint 6 KR-5) — gerbang minimum: lint + mypy strict + unit.
-# Integration/e2e/eval sekarang jalan di runner GitHub Actions TANPA Docker
-# dev container (cf. ci-full.yml — service container pgvector + model
-# auto-download & LLM Qwen3-4B); job cepat ini tetap gerbang minimum per-PR.
+# rag-mvp CI — SATU workflow, dua pilar (tanpa dev container Docker):
+#
+#   job quality         : lint + ruff-format + mypy strict + unit (gerbang cepat)
+#   job retrieval-gate  : schema → e5 fp32 → integration tests → eval gerbang rilis
+#   job generation-gate : GGUF Qwen3-4B auto-download → app boot → smoke → e2e Playwright
+#
+# Topologi sama dengan compose ([db pgvector] ↔ [app]) — Postgres+pgvector
+# disediakan sebagai SERVICE CONTAINER (pola provisioning DB standar Actions;
+# docker-compose dev tetap untuk host/prod, tidak dipakai di CI).
+#
+# "Resource lebih besar": runner ubuntu-24.04 = 4 vCPU / 16 GB RAM
+# (dev container hanya mem_limit 2500m) → LLM CI dinaikkan dari Qwen3-1.7B
+# Q3_K_M (939 MB) ke **Qwen3-4B-Instruct-2507 Q4_K_M (~2.6 GB)** — diunduh
+# otomatis via scripts/download_models.sh + di-cache actions/cache.
+# 2507-Instruct tidak mengeluarkan blok pemikiran — filter delta di gateway
+# tetap sebagai lapisan ketahanan (masukannya kosong → no-op).
+#
+# Pin versi: runner ubuntu-24.04 (label `ubuntu-latest` migrasi ke 26.10 —
+# issue runner-images#14748). Action berbasis node24. NB: astral-sh/setup-uv
+# TIDAK menyediakan tag majort `v10` — pin versi PENUH `v10.3.3`.
+#
+# Trigger harian 02:00 UTC = Backlog "eval harian" (regresi memblok merge —
+# docs/eval.md); hasil eval di-upload sebagai artifact setiap run.
 name: ci
 
 on:
   push:
     branches: ["main"]
   pull_request:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+x-db-service: &db-service
+  image: pgvector/pgvector:pg17
+  env:
+    POSTGRES_USER: rag
+    POSTGRES_PASSWORD: rag
+    POSTGRES_DB: rag
+  ports:
+    - 5432:5432
+  options: >-
+    --health-cmd "pg_isready -U rag"
+    --health-interval 5s
+    --health-timeout 5s
+    --health-retries 12
+
 jobs:
+  # =========================================================================
+  # Job 1 — quality: gerbang cepat statis + unit (tanpa DB, tanpa model)
+  # =========================================================================
   quality:
-    runs-on: ubuntu-24.04 # pin (bukan ubuntu-latest — migrasi 26.10, lihat ci-full.yml)
-    timeout-minutes: 15
+    name: lint + mypy strict + unit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.3.3 # pin penuh — tiada majortag `v10`
         with:
           python-version: "3.12"
+
+      - name: Cache uv
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('uv.lock') }}
 
       - name: Sync dependencies (dev)
         run: uv sync --group dev
@@ -39,3 +85,195 @@ jobs:
 
       - name: Unit tests
         run: uv run pytest -m unit -q
+
+  # =========================================================================
+  # Job 2 — retrieval-gate: schema → e5 → integration → seed → eval gate
+  # (tanpa GGUF: eval = retrieval-only + polisi skor — docs/eval.md)
+  # =========================================================================
+  retrieval-gate:
+    name: integration + eval gerbang rilis
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      db: *db-service
+    env:
+      DATABASE_URL: postgresql://rag:rag@localhost:5432/rag
+      # Inbox di workspace (bukan /data) — dibaca builder seed + CI seed script.
+      INGEST_INBOX_PATH: ${{ github.workspace }}/data/inbox
+      # e5 fp32 IDENTIK dengan dev host — ambang kosinus 0.82 tetap baku.
+      EMBED_MODEL_PATH: models/e5/onnx/model.onnx
+      EMBED_TOKENIZER_PATH: models/e5/tokenizer.json
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.12"
+
+      - name: Cache uv (build llama-cpp-python mahal — reusable lintas run)
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('uv.lock') }}
+
+      - name: Sync deps (tanpa llama-cpp-python — job ini retrieval-only)
+        run: uv sync --group dev --no-install-package llama-cpp-python
+
+      - name: Terapkan skema DB (init + migrations)
+        run: |
+          command -v psql >/dev/null || { sudo apt-get update; sudo apt-get install -y postgresql-client; }
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/init/001_schema.sql
+          for f in db/migrations/*.sql; do
+            echo "apply $f"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Cache model e5 (fp32 ~450 MB — unduh ulang dihindari)
+        uses: actions/cache@v6
+        with:
+          path: models/e5
+          key: models-${{ runner.os }}-e5-fp32
+
+      - name: Unduh model embedding (e5 fp32 — identik dev host)
+        run: bash scripts/download_models.sh e5
+
+      - name: Verifikasi model e5 (ukuran minimal — gagal keras bila undahan rusak)
+        run: |
+          ls -lh models/e5 models/e5/onnx
+          test -s models/e5/onnx/model.onnx
+          [ "$(stat -c%s models/e5/onnx/model.onnx)" -gt 300000000 ]
+          test -s models/e5/tokenizer.json
+
+      - name: Integration tests (DB sekali-guna per-test via conftest)
+        run: uv run pytest -m integration -q
+
+      - name: Bangun + ingest korpus seed (tanpa watchdog/app)
+        run: |
+          uv run python scripts/build_seed_corpus.py
+          uv run python scripts/ci_seed_db.py
+
+      - name: Eval + gerbang rilis (recall/MRR/refusal keras — gagal exit 1)
+        run: uv run python src/eval/run_eval.py
+
+      - name: Upload hasil eval
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: eval-results-${{ github.run_id }}
+          path: eval/results/
+          if-no-files-found: error
+
+  # =========================================================================
+  # Job 3 — generation-gate: model 4B unduh-otomatis → boot → smoke → e2e
+  # (RAM: PG service + 4B ~3.5 GB + chromium < 8 GB — aman di runner 16 GB)
+  # =========================================================================
+  generation-gate:
+    name: smoke + e2e (LLM Qwen3-4B, model diunduh otomatis)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      db: *db-service
+    env:
+      DATABASE_URL: postgresql://rag:rag@localhost:5432/rag
+      INGEST_INBOX_PATH: ${{ github.workspace }}/data/inbox
+      EMBED_MODEL_PATH: models/e5/onnx/model.onnx
+      EMBED_TOKENIZER_PATH: models/e5/tokenizer.json
+      MODEL_PATH: ${{ github.workspace }}/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+      LLM_THREADS: 4
+      # CI-only override: e2e punya timeout aliran 120 s (test_sprint5) —
+      # pada 4 vCPU jawaban ≤384 token memangkas risiko melampaui hitung
+      # waktu; mutu jawaban golden tetap (prompt grounded + sitasi).
+      LLM_MAX_TOKENS: 384
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.12"
+
+      - name: Cache uv
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('uv.lock') }}
+
+      - name: Sync deps (penuh — app butuh llama-cpp-python + chainlit)
+        run: uv sync --group dev
+
+      - name: Terapkan skema DB (init + migrations)
+        run: |
+          command -v psql >/dev/null || { sudo apt-get update; sudo apt-get install -y postgresql-client; }
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/init/001_schema.sql
+          for f in db/migrations/*.sql; do
+            echo "apply $f"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Cache model (GGUF 4B + e5 — ~3 GB; unduh ulang dihindari)
+        uses: actions/cache@v6
+        with:
+          path: models
+          key: models-${{ runner.os }}-qwen3-4b-q4km-e5-fp32
+
+      - name: Unduh model otomatis (LLM 4B + e5)
+        run: bash scripts/download_models.sh all
+
+      - name: Verifikasi model (ukuran minimal — gagal keras bila undahan rusak)
+        run: |
+          ls -lh models models/e5/onnx
+          test -s models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+          [ "$(stat -c%s models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf)" -gt 2000000000 ]
+          [ "$(stat -c%s models/e5/onnx/model.onnx)" -gt 300000000 ]
+          test -s models/e5/tokenizer.json
+
+      - name: Bangun + ingest korpus seed (tanpa watchdog/app)
+        run: |
+          uv run python scripts/build_seed_corpus.py
+          uv run python scripts/ci_seed_db.py
+
+      - name: Boot app lokal (GGUF dimuat lifespan; port 8000)
+        run: |
+          nohup uv run uvicorn app.adapters.api:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
+          # /health ping DB — tunggu hingga siap (maks ~3 menit).
+          for i in $(seq 1 90); do
+            if curl -fsS http://localhost:8000/health > /dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://localhost:8000/health
+          # worker ingest (lifespan) belum tentu selesai antre — tidak dipakai:
+          # korpus seed sudah lewat ci_seed_db.py (path langsung use case).
+
+      - name: "Preflight /chat (LLM 4B hidup: jawaban grounded + sitasi, bukan placeholder)"
+        run: |
+          RESP=$(curl -fsS --max-time 600 -X POST http://localhost:8000/chat \
+            -H "Content-Type: application/json" \
+            -d '{"question":"Berapa hari cuti tahunan bagi kakitangan tetap?","stream":false}')
+          echo "${RESP:0:400}"
+          echo "$RESP" > chat-preflight.json
+          # Model harus menjawab DENGAN konteks: bukan refusal, ada ≥1 sitasi —
+          # (placeholder LLM gagal di sini; e2e tidak akan lari pada UI kosong).
+          jq -e '(.is_refusal == false) and (.citations | length >= 1) and (.content | length > 10)' chat-preflight.json
+
+      - name: Smoke end-to-end (ingest + job + purge korpus)
+        env:
+          BASE_URL: http://localhost:8000
+        run: bash scripts/smoke.sh
+
+      - name: Pasang chromium Playwright (sekali per run — browser tidak ikut cache uv)
+        run: uv run playwright install --with-deps chromium
+
+      - name: e2e Playwright (UI Chainlit hidup + LLM 4B sebenar)
+        env:
+          E2E_BASE_URL: http://localhost:8000
+        run: uv run pytest -m e2e -q
+
+      - name: Log app saat gagal
+        if: failure()
+        run: |
+          if [ -f uvicorn.log ]; then tail -n 120 uvicorn.log; fi
