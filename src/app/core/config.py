@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     # --- Retrieval ---
     retriever_top_k: int = Field(default=4, ge=1)
     rrf_k: int = Field(default=60, ge=1)
+    # Sprint 3 (KR-1): HNSW_langkah carian per-connection — SET hnsw.ef_search.
+    hnsw_ef_search: int = Field(default=100, ge=1)
+    # Sprint 3 (KR-2): had konteks yang masuk prompt (~2,500 dari n_ctx 4096).
+    context_max_tokens: int = Field(default=2500, ge=128)
 
     # --- Server ---
     host: str = "0.0.0.0"

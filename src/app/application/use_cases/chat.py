@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import structlog
 
+from app.application.context import build_context, fuse_rrf
 from app.application.ports import Embedder, LLMGateway, VectorRepository
-from app.domain.chat import ChatAnswer, RefusalReason, RetrievedChunk, RetrievedContext
+from app.domain.chat import ChatAnswer, RefusalReason, RetrievedChunk
 from app.domain.errors import RetrievalError
 
 logger = structlog.get_logger(__name__)
@@ -27,12 +28,14 @@ class ChatUseCase:
         *,
         top_k: int = 4,
         rrf_k: int = 60,
+        max_context_tokens: int = 2500,
     ) -> None:
         self._embedder = embedder
         self._vector_repo = vector_repo
         self._llm = llm
         self._top_k = top_k
         self._rrf_k = rrf_k
+        self._max_context_tokens = max_context_tokens
 
     async def execute(
         self,
@@ -57,22 +60,13 @@ class ChatUseCase:
             return ChatAnswer.refused(RefusalReason.NO_RELEVANT_CONTEXT)
 
         rows = await self._vector_repo.fetch_chunks([key for key, _ in fused])
-        scores = dict(fused)
-        chunks = tuple(
-            RetrievedChunk(
-                document_id=doc_id,
-                source=source,
-                chunk_index=chunk_index,
-                content=content,
-                rrf_score=scores[(doc_id, chunk_index)],
-            )
-            for doc_id, source, content, chunk_index in sorted(
-                rows,
-                key=lambda r: scores.get((r[0], r[3]), 0.0),
-                reverse=True,
-            )
+        chunks = self._order_chunks(rows, dict(fused))
+        context = build_context(
+            question,
+            chunks,
+            max_tokens=self._max_context_tokens,
+            max_chunks=self._top_k,
         )
-        context = RetrievedContext(query=question, chunks=chunks[: self._top_k])
 
         content = await self._llm.generate_grounded(question, context, history)
         log.bind(session_stage="chat", latency_stage="generation").info(
@@ -82,14 +76,30 @@ class ChatUseCase:
         )
         return ChatAnswer.grounded(content=content, citations=context.citations)
 
+    # ---- urutkan chunk mengikut skor RRF (terbaik dulu) ---------------------
+    def _order_chunks(
+        self,
+        rows: list[tuple[int, str, str, int]],
+        scores: dict[tuple[int, int], float],
+    ) -> tuple[RetrievedChunk, ...]:
+        """Rows dari repo → RetrievedChunk diurut skor RRF menurun (stabil)."""
+
+        ordered = sorted(rows, key=lambda r: scores.get((r[0], r[3]), 0.0), reverse=True)
+        return tuple(
+            RetrievedChunk(
+                document_id=doc_id,
+                source=source,
+                chunk_index=chunk_index,
+                content=content,
+                rrf_score=scores[(doc_id, chunk_index)],
+            )
+            for doc_id, source, content, chunk_index in ordered
+        )
+
     # ---- RRF (docs/retrieval.md): score = Σ 1/(RRF_K + rank), rank mulai 1 ----
     def _fuse_rrf(
         self,
         dense: list[tuple[int, int]],
         sparse: list[tuple[int, int]],
     ) -> list[tuple[tuple[int, int], float]]:
-        scores: dict[tuple[int, int], float] = {}
-        for lane in (dense, sparse):
-            for rank, key in enumerate(lane, start=1):
-                scores[key] = scores.get(key, 0.0) + 1.0 / (self._rrf_k + rank)
-        return sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+        return fuse_rrf(dense, sparse, self._rrf_k)

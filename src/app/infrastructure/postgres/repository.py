@@ -45,7 +45,14 @@ class PgVectorRepository:
         return self._pool
 
     @classmethod
-    async def create_from_env(cls, dsn: str, min_size: int, max_size: int) -> PgVectorRepository:
+    async def create_from_env(
+        cls,
+        dsn: str,
+        min_size: int,
+        max_size: int,
+        *,
+        hnsw_ef_search: int = 100,
+    ) -> PgVectorRepository:
         """Buat pool + codec jsonb + konsol FTS config sekali pada startup."""
 
         async def _init(conn: asyncpg.Connection) -> None:
@@ -62,13 +69,15 @@ class PgVectorRepository:
             row: str | None = await conn.fetchval(FTS_CONFIG_SQL)
         fts = row or "simple"
         logger.info("db_ready", fts_config=fts, pool_min=min_size, pool_max=max_size)
-        return cls(pool, fts)
+        return cls(pool, fts, hnsw_ef_search)
 
     # --- VectorRepository --------------------------------------------------
 
     async def search_dense(self, query_embedding: list[float], top_k: int) -> list[tuple[int, int]]:
         try:
             async with self._pool.acquire() as conn:
+                # Konfigurasi per-connection (pgvector-dev): pemeriksaan recal HNSW.
+                # int() memastikan angka — SET tidak dapat di-bind, bukan interpolasi user.
                 await conn.execute(f"SET hnsw.ef_search = {int(self._hnsw_ef_search)}")
                 rows: list[asyncpg.Record] = await conn.fetch(
                     """
@@ -90,15 +99,17 @@ class PgVectorRepository:
     async def search_sparse(self, query: str, top_k: int) -> list[tuple[int, int]]:
         try:
             async with self._pool.acquire() as conn:
-                # TSQUERY parsing letak fungsinya murni text user — bind variable, aman.
+                # FTS config di-bind $1::regconfig — TANPA interpolasi string sama
+                # sekali (golden rule #4), baca nilai dari _fts_config pada startup.
                 rows: list[asyncpg.Record] = await conn.fetch(
-                    f"""
+                    """
                     SELECT document_id, chunk_index
                     FROM chunks
-                    WHERE tsv @@ plainto_tsquery('{self._fts_config}', $1)
-                    ORDER BY ts_rank(tsv, plainto_tsquery('{self._fts_config}', $1)) DESC
-                    LIMIT $2
+                    WHERE tsv @@ plainto_tsquery($1::regconfig, $2)
+                    ORDER BY ts_rank(tsv, plainto_tsquery($1::regconfig, $2)) DESC
+                    LIMIT $3
                     """,
+                    self._fts_config,
                     query,
                     top_k,
                 )

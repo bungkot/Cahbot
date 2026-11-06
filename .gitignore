@@ -27,6 +27,7 @@ data/inbox/.gitkeep
 pgdata/
 pgdata/*
 !pgdata/.gitkeep
+eval/results/
 
 # Docker
 .dockerignore

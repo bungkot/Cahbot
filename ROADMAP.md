@@ -50,12 +50,24 @@ Status: ✅ done — all KRs green (ruff/format/mypy strict + 11 unit + 7 integr
   - ✅ all met: smoke PDF tersimpan dengan `heading: "Dasar Cuti"` + `page: 1` + model `multilingual-e5-small`; file pecah → IngestError → job `failed` + retry 2× masih membiarkan worker hidup; `make check-all` + integration hijau.
 
 ## Sprint 3 — Production-grade retrieval (target: 3–4 days)
-Status: ☐ todo
+Status: ✅ done — semua KR hijau: gate (ruff/format/mypy strict + 21 unit + 7 integration + 5 e2e) + smoke LULUS + eval recall@4=1.00/MRR@4=1.00 (sasaran sprint ≥0.70) + EXPLAIN HNSW & GIN terbukti (bukti di docs/runbook.md).
 - **KR-1 Hybrid query** — improve the dense/sparse SQL in `PgVectorRepository`: verify with `EXPLAIN (ANALYZE, BUFFERS)` for HNSW + GIN; `hnsw.ef_search=100` per connection.
+  - [x] FTS config di-bind `$1::regconfig` (tiada lagi interpolasi f-string — golden rule #4) — disahkan 7 ujian integration atas Postgres dgn config `indonesian` berresolusi dari `_fts_config`
+  - [x] `hnsw_ef_search` dari `Settings` → `create_from_env(..., hnsw_ef_search=...)` (masih SET per connection)
+  - [x] EXPLAIN (ANALYZE, BUFFERS): HNSW digunakan (tanpa hint pun, 0.12–0.35 ms); GIN digunakan (dgn `enable_seqscan=off` — di 7 baris planner pilih seqscan, semula selepas bulk load sebenar) → bukti penuh di `docs/runbook.md` § evidence
 - **KR-2 RRF & context builder** — already present in `ChatUseCase._fuse_rrf`; add: max context slice ~2,500 tokens; trimming that never cuts the best chunk.
+  - [x] `app/application/context.py`: `fuse_rrf` (satu-satunya implementasi; `ChatUseCase._fuse_rrf` delegasi), `estimate_tokens` (~4 aksara/token), `build_context(max_tokens, max_chunks)` — chunk terbaik TIDAK PERNAH dipotong, cap `RETRIEVER_TOP_K` dihormati
+  - [x] `Settings.CONTEXT_MAX_TOKENS=2500` + `HNSW_EF_SEARCH=100` (+ `.env.example`)
+  - [x] unit: `tests/unit/test_context.py` + `tests/unit/test_chat_context.py` (10 kes baharu)
 - **KR-3 Quality** — test Recall@4 / MRR@4 with the initial golden set (10 answerable cases + 3 must_refuse).
+  - [x] korpus seed BM konstruktif: `scripts/build_seed_corpus.py` (`make seed`) → `handbook-cuti.pdf` + `panduan-klaim-perjalanan.pdf` (fakta konsisten dgn golden set; di-ingest ke DB — watchdog juga disahkan memproses)
+  - [x] golden set awal: `eval/golden/golden.jsonl` (10 answerable + 3 must_refuse; format docs/eval.md)
+  - [x] runner eval retrieval-only: `src/eval/run_eval.py` — hasil: recall@4=1.00 (10/10), MRR@4=1.00, latency p50/p95=39/122 ms; refusal-tanpa-konteks 0/3 = dijangka (dasar ambang skor RRF bermula Sprint 4); `eval/results/20261106-004153.{json,md}`
 - **KR-4 Indexing playbook** — run the `pgvector-dev` skill to create the HNSW index after a bulk load (per the init schema).
+  - [x] playbook + langkah EXPLAIN di `docs/runbook.md` § "Indexing playbook (Sprint 3)" + bukti EXPLAIN direkodkan
 - **Definition of done**: EXPLAIN shows HNSW+GIN are used; recall@4 ≥ 0.7 on the initial golden set (release threshold 0.80 in Sprint 5).
+  - ✅ met: HNSW+GIN terbukti dalam EXPLAIN; recall@4 = 1.00 ≥ 0.70; smoke LULUS (`docker exec` laluan POST /ingest disahkan; estet: app `degraded` hanya kerana GGUF LLM belum sedia — Sprint 4).
+  - Nota backlog (pre-existing, bukan Sprint 3): menjalankan SEMUA suite dalam satu proses `pytest -q` mengadakan konflik pytest-asyncio×pytest-playwright (loop dikongsi) — gate dikekalkan check-all + marker berasingan; port tindakan pink ke Backlog bagi pemiwaian integrasi test-runner; juga: watchdog lewat beberapa saat pada mount Windows (POST /ingest/fallback) → di-Backlog.
 
 ## Sprint 4 — Grounded generation (target: 4–5 days)
 Status: ☐ todo
@@ -84,6 +96,8 @@ Status: ☐ todo
 - [ ] Tag the v0.1.0 release (tag + a short CHANGELOG)
 
 ## Backlog (post-release / optional)
+- Satukan test-runner: jalankan `pytest -q` SATU proses (unit+integration+e2e) — kini konflik pytest-asyncio × pytest-playwright (loop dikongsi; `RuntimeError: Runner.run() cannot be called from a running event loop`). Gate sebuah sementara: check-all + marker berasingan (pre-existing, bukan Sprint 3).
+- Watchdog lewat beberapa saat untuk fail baru pada mount Windows→Linux (peek-and-poll fallback?). POST `/ingest` bekerja sebagai laluan operasi terdekat — selesai di Sprint 6 hardening.
 - Optional reranker (bge-reranker ONNX CPU) — only if Recall@4 < 0.75 without the reranker → a measured decision, not a default (ADR D4).
 - Scanned PDF ingest (light OCR) if the corpus requires it.
 - Multi-tenant: multiple collections/namespaces in chunks.

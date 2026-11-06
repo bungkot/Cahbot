@@ -55,6 +55,7 @@ def build_container(
             llm=llm,
             top_k=settings.retriever_top_k,
             rrf_k=settings.rrf_k,
+            max_context_tokens=settings.context_max_tokens,
         ),
         ingest=IngestUseCase(
             parser=router,
@@ -81,7 +82,10 @@ async def build_production_container(
     """
 
     repo = await PgVectorRepository.create_from_env(
-        settings.database_url, settings.db_pool_min, settings.db_pool_max
+        settings.database_url,
+        settings.db_pool_min,
+        settings.db_pool_max,
+        hnsw_ef_search=settings.hnsw_ef_search,
     )
     job_store = PgIngestJobRepository(repo.pool)
     embedder = OnnxEmbedder(

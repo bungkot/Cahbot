@@ -11,7 +11,7 @@ RUN     = $(PROF) run --rm dev      # pemanggilan sekali-jalan (tooling)
 EXEC    = $(PROF) exec dev          # ke service `dev` yang sedang berjalan
 
 .PHONY: up up-prod down dev-build logs shell lint typecheck test test-all test-e2e \
-        check-all playwright-install smoke eval db-shell db-migrate backup restore mem app
+        check-all playwright-install seed smoke eval db-shell db-migrate backup restore mem app
 
 # --- lifecycle ---
 up:          # dev stack: db + dev tooling (kode di-mount)
@@ -56,6 +56,9 @@ playwright-install:
 	$(RUN) playwright install --with-deps chromium
 
 # --- smoke / eval ---
+seed:            # bina korpus seed BM ke data/inbox (worker auto-ingest)
+	$(RUN) uv run python scripts/build_seed_corpus.py
+
 smoke:
 	$(RUN) bash scripts/smoke.sh
 

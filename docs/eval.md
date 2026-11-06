@@ -30,3 +30,5 @@ make eval          # uv run python src/eval/run_eval.py
 ```
 
 Summarized results are saved to `eval/results/<timestamp>.json` + a markdown summary for comparing runs.
+
+Runner (Sprint 3) measures retrieval-only metrics against the fused top-4 (RRF — the same fusion used by `ChatUseCase`); LLM-based metrics (faithfulness, e2e latency) land with the Sprint 5 expansion. Seed the corpus first (`make seed` — see runbook) and let the worker ingest it before running `make eval`; when the real corpus replaces the seed, rewrite `eval/golden/golden.jsonl` accordingly.

@@ -19,7 +19,8 @@ query ──embed(prefix "query:")──┐
 |---|---|---|
 | `RETRIEVER_TOP_K` | 4 | chunks that enter the prompt |
 | `RRF_K` | 60 | RRF smoothing constant |
-| `hnsw.ef_search` | 100 | set per connection in `app/db.py` (not globally in the DB) |
+| `HNSW_EF_SEARCH` | 100 | set per connection in `PgVectorRepository` (not globally in the DB) |
+| `CONTEXT_MAX_TOKENS` | 2500 | budget for the context slice (+ question + history + answer within n_ctx 4096) |
 
 ## Policy conflicts
 

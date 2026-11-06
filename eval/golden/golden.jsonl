@@ -1,0 +1,13 @@
+{"id": "g001", "question": "Berapa hari cuti tahunan bagi kakitangan tetap?", "expected_answer": "12 hari bekerja bagi setiap tahun perkhidmatan, tertakluk kepada kelulusan ketua jabatan.", "source": "handbook-cuti.pdf", "must_refuse": false}
+{"id": "g002", "question": "Adakah cuti tahunan boleh ditambah selepas lima tahun berkhidmat?", "expected_answer": "Ya, tambahan 2 hari cuti tahunan selepas 5 tahun perkhidmatan berterusan.", "source": "handbook-cuti.pdf", "must_refuse": false}
+{"id": "g003", "question": "Apa syarat untuk mengambil cuti sakit?", "expected_answer": "Cuti sakit perlu disokong sijil doktor yang sah dan diserahkan dalam tempoh 48 jam dari hari bertugas pertama selepas cuti sakit.", "source": "handbook-cuti.pdf", "must_refuse": false}
+{"id": "g004", "question": "Apa jadi kalau saya tidak serahkan sijil doktor?", "expected_answer": "Hari tersebut dijadikan cuti tidak berbayar.", "source": "handbook-cuti.pdf", "must_refuse": false}
+{"id": "g005", "question": "Berapa lama cuti bersalin yang layak diterima?", "expected_answer": "90 hari berbayar bagi setiap kali bersalin.", "source": "handbook-cuti.pdf", "must_refuse": false}
+{"id": "g006", "question": "Berapa kadar elaun perjalanan darat?", "expected_answer": "RM0.40 bagi setiap kilometer jarak perjalanan.", "source": "panduan-klaim-perjalanan.pdf", "must_refuse": false}
+{"id": "g007", "question": "Dalam tempoh berapa hari borang klaim perlu dikemukakan?", "expected_answer": "Dalam tempoh 14 hari bekerja dari tarikh perjalanan.", "source": "panduan-klaim-perjalanan.pdf", "must_refuse": false}
+{"id": "g008", "question": "Siapa yang meluluskan klaim perjalanan?", "expected_answer": "Ketua Jabatan, sebelum diproses oleh Unit Kewangan.", "source": "panduan-klaim-perjalanan.pdf", "must_refuse": false}
+{"id": "g009", "question": "Resit macam mana yang diperlukan untuk klaim?", "expected_answer": "Resit asli; resit salinan tidak diterima.", "source": "panduan-klaim-perjalanan.pdf", "must_refuse": false}
+{"id": "g010", "question": "Bila klaim perjalanan saya akan dibayar?", "expected_answer": "Pada bulan berikutnya selepas tarikh kelulusan.", "source": "panduan-klaim-perjalanan.pdf", "must_refuse": false}
+{"id": "g011", "question": "Berapa baki cuti tahunan saya yang tinggal?", "expected_answer": "", "source": "", "must_refuse": true}
+{"id": "g012", "question": "Berapa subsidi internet pekerja setiap bulan?", "expected_answer": "", "source": "", "must_refuse": true}
+{"id": "g013", "question": "Apakah dasar pencen syarikat?", "expected_answer": "", "source": "", "must_refuse": true}
