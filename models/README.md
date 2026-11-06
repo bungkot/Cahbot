@@ -12,7 +12,7 @@ Download from official sources (Hugging Face) and verify checksums before use. P
 Runner Actions (ubuntu-latest, 16 GB RAM) memuat model yang LEBIH BESAR secara
 otomatis via `scripts/download_models.sh` (idempoten + `actions/cache`):
 
-- `Qwen3-4B-Instruct-2507-Q4_K_M.gguf` (~2.6 GB) — LLM mutu lebih tinggi untuk
+- `Qwen3-4B-Q4_K_M.gguf` (~2.6 GB, repo resmi `Qwen/Qwen3-4B-GGUF`) — LLM mutu lebih tinggi untuk
   smoke/e2e di CI; `MODEL_PATH` di-set lewat env workflow (tidak mengubah dev host).
 - `e5/onnx/model.onnx` + `e5/tokenizer.json` — fp32 SAMA dengan file
   `multilingual-e5-small.onnx` di atas (ambang kosinus penolakan tetap baku).

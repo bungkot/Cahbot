@@ -10,10 +10,10 @@
 #
 # "Resource lebih besar": runner ubuntu-24.04 = 4 vCPU / 16 GB RAM
 # (dev container hanya mem_limit 2500m) → LLM CI dinaikkan dari Qwen3-1.7B
-# Q3_K_M (939 MB) ke **Qwen3-4B-Instruct-2507 Q4_K_M (~2.6 GB)** — diunduh
-# otomatis via scripts/download_models.sh + di-cache actions/cache.
-# 2507-Instruct tidak mengeluarkan blok pemikiran — filter delta di gateway
-# tetap sebagai lapisan ketahanan (masukannya kosong → no-op).
+# Q3_K_M (939 MB) ke **Qwen3-4B Q4_K_M (~2.6 GB)** — repo resmi
+# Qwen/Qwen3-4B-GGUF; diunduh otomatis + di-cache actions/cache.
+# Qwen3-4B hybrid thinking/non-thinking: soft-switch `/no_think` + filter
+# delta gateway (warisan Sprint 4) menyaring blok pemikiran dari aliran UI.
 #
 # Pin versi: runner ubuntu-24.04 (label `ubuntu-latest` migrasi ke 26.10 —
 # issue runner-images#14748). Action berbasis node24. NB: astral-sh/setup-uv
@@ -197,7 +197,7 @@ jobs:
       INGEST_INBOX_PATH: ${{ github.workspace }}/data/inbox
       EMBED_MODEL_PATH: models/e5/onnx/model.onnx
       EMBED_TOKENIZER_PATH: models/e5/tokenizer.json
-      MODEL_PATH: ${{ github.workspace }}/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+      MODEL_PATH: ${{ github.workspace }}/models/Qwen3-4B-Q4_K_M.gguf
       LLM_THREADS: 4
       # CI-only override: e2e punya timeout aliran 120 s (test_sprint5) —
       # pada 4 vCPU jawaban ≤384 token memangkas risiko melampaui hitung
@@ -244,8 +244,8 @@ jobs:
       - name: Verifikasi model (ukuran minimal — gagal keras bila undahan rusak)
         run: |
           ls -lh models models/e5/onnx
-          test -s models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
-          [ "$(stat -c%s models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf)" -gt 2000000000 ]
+          test -s models/Qwen3-4B-Q4_K_M.gguf
+          [ "$(stat -c%s models/Qwen3-4B-Q4_K_M.gguf)" -gt 2000000000 ]
           [ "$(stat -c%s models/e5/onnx/model.onnx)" -gt 300000000 ]
           test -s models/e5/tokenizer.json
 

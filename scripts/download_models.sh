@@ -8,8 +8,9 @@
 #   bash scripts/download_models.sh [all|llm|e5]     (default: all)
 # Env (bisa dioverride tanpa menyentuh skrip):
 #   MODELS_DIR  default "models" (relatif ke repo root)
-#   LLM_REPO    default Qwen/Qwen3-4B-Instruct-2507-GGUF
-#   LLM_FILE    default Qwen3-4B-Instruct-2507-Q4_K_M.gguf (~2.6 GB)
+#   LLM_REPO    default Qwen/Qwen3-4B-GGUF (repo GGUF official Qwen — nama
+#               "Instruct-2507-GGUF" TIDAK ada di kanal GGUF resmi)
+#   LLM_FILE    default Qwen3-4B-Q4_K_M.gguf (~2.6 GB)
 #   E5_CANDIDATES  spasi-daftar repo e5 (di-probe berurutan; pertama yang
 #                  merespons 200 dipakai) — default onnx-community/...-ONNX,
 #                  Xenova/multilingual-e5-small, onnx-community/multilingual-e5-small
@@ -26,8 +27,8 @@ set -euo pipefail
 
 MODE="${1:-all}"
 MODELS_DIR="${MODELS_DIR:-models}"
-LLM_FILE="Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
-LLM_REPO="${LLM_REPO:-Qwen/Qwen3-4B-Instruct-2507-GGUF}"
+LLM_FILE="Qwen3-4B-Q4_K_M.gguf"
+LLM_REPO="${LLM_REPO:-Qwen/Qwen3-4B-GGUF}"
 
 # Kandidat repo e5 (nama ONNX berubah di HF onnx-community/Xenova) — di-
 # probe urut bila token; yang pertama merespons 200 dipakai nama tersebut.
