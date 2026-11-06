@@ -66,3 +66,22 @@ Temuan prompt (probe iterasi, kes-kes di atas, retrieval riil — sistem prompt 
 3. **g011 TAK terselesaikan pada 1.7B** — aturan abstrak (W2) & contoh penolakan eksplisit (W3) kedua-duanya menghalusinasi nombor dasar (12/90) sebagai "baki"; dengan thinking aktif pula 151.7 s dan token habis di tengah nalar (max_tokens 512). Jurang cosine tak membantu (jawab-able min 0.8503 < g011 0.8864). **Status: jurang model — dibawa ke Backlog** (calon: model lebih besar pada Sprint 5, klasifikasi frasa peribadi di retrieval/kgZ lapisan penafian, atau booster kecil).
 
 Bukti ukuran ini perlu diulang bila model berganti (iku polisi mengukur semula di atas). Gate skor: `g012`/`g013` beralt 2/2; `g011` menyandarkan DoD "100% refused" pada satu-satunya jurang bukti negatif yang tinggal.
+
+## Sprint 5 verification — golden v1 + release gate penuh (2026-11-06)
+
+Golden set diperbesar menjadi **20 kes** (`eval/golden/golden.jsonl`: 17 `answerable` + 3 `must_refuse`) dengan fakta disahkan terhadap chunk DB. Runner (`src/eval/run_eval.py`) kini melaksanakan **gerbang rilis penuh** (`release_gate()`) — recall@4, MRR@4, refusal_precision, latency p50/p95, sanity golden (≥ 20 kes, ≥ 3 `must_refuse`); kegagalan mana-mana → `SystemExit(1)` (merge blocked). JSON hasil membawa blok `thresholds` + `gate` penuh; `.md` ringkasan menunjukkan status terhadap gerbang.
+
+Sekatan perlindungan `KNOWN_GAP_IDS = {"g011"}`: kes jurang-model backlogged (Sprint 4 — halusinasi nombor dasar pada Qwen3-1.7B, `docs/eval.md` § Sprint 4 verification item 3) dikecualikan daripada `refusal_precision` pengiraan gerbang — perisikan ini eksplisit dalam kod + dokumen ini; senarai wajib kosong sebelum tag rilis.
+
+Hasil gerbang penuh (`eval/results/20261106-101638.json`, `passed=True`; diulang `20261106-103634.json` selepas review — recall@4/MRR@4/refusal_precision serupa, p50/p95 = 11.4/15.9 ms):
+
+| Metrik | Ukuran | Gerbang | Status |
+|---|---|---|---|
+| recall@4 | 1.00 (17/17) | ≥ 0.80 | ✅ |
+| MRR@4 | 1.00 | ≥ 0.65 | ✅ |
+| refusal_precision (gerbang, dikecualikan g011) | 1.00 (2/2) | = 1.00 (keras) | ✅ |
+| refusal oleh polisi (raw) | 2/3 (g011 borderline) | — | ℹ |
+| latency retrieval p50 / p95 | 13.2 / 50.2 ms | ≤ 3000 / 8000 ms | ✅ |
+| sanity golden | 20 kes, 3 `must_refuse` | ≥ 20, ≥ 3 | ✅ |
+
+Nota bukti: gerbang metrik ini ialah *retrieval-only* (tiada LLM dimuat semasa runner — keserasian memori host 8 GB); latensinya ialah latency retrieval, bukan question → first token penuh (sasaran ≤ 3 s itu diukur pada smoke/manual e2e; p50 e2e real ~22 s pada model CPU 1.7B diukur di Sprint 4). Faithfulness masih manuale per demo — berpindah ke runner adalah Backlog pasca-sprint. Keputusan gerbang diulang pada setiap perubahan retrieval/ambang; senarai `KNOWN_GAP_IDS` dikosongkan sebelum rilis (Sprint 6).

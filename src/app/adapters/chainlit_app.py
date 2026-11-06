@@ -14,6 +14,7 @@ Kontrak (docs/conventions/ui.md + D6-update):
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -128,11 +129,13 @@ async def _handle_ingest(message: cl.Message, container: Container) -> None:
             await cl.Message(content=f"fail tidak dijumpai: {name}").send()
             continue
         source = Path(name).name
-        data = Path(path).read_bytes()
+        # Baca fail boleh besar (hingga 50 MB) — jangan menyekat event loop.
+        data = await asyncio.to_thread(Path(path).read_bytes)
         try:
             result = await container.ingest.execute(data, source=source)
             status = f"done — {result.n_chunks} chunk(s), hash {result.content_hash[:12]}…"
-        except Exception as exc:  # IngestError → status gagal (docs/conventions/ui.md)
-            logger.warning("ui_ingest_failed", source=source, error=str(exc))
-            status = f"gagal — {exc}"
+        except Exception as exc:
+            # Mesej dalaman (mis. asyncpg) tidak diluluskan ke UI — rincian pada log.
+            logger.warning("ui_ingest_failed", source=source, error=repr(exc))
+            status = "gagal — ingest gagal; sila semak log pelayan"
         await cl.Message(content=f"ingest[{source}]: {status}").send()

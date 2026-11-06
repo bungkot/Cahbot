@@ -117,7 +117,7 @@ pythonpath = ["src"]
 markers = [
     "integration: requires Docker + pgvector container",
     "unit: pure unit test, no Docker",
-    "e2e: browser tests via Playwright (mockup served locally)",
+    "e2e: browser tests via Playwright against the live UI (needs a running app)",
 ]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"

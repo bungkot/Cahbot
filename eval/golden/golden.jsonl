@@ -11,3 +11,10 @@
 {"id": "g011", "question": "Berapa baki cuti tahunan saya yang tinggal?", "expected_answer": "", "source": "", "must_refuse": true}
 {"id": "g012", "question": "Berapa subsidi internet pekerja setiap bulan?", "expected_answer": "", "source": "", "must_refuse": true}
 {"id": "g013", "question": "Apakah dasar pencen syarikat?", "expected_answer": "", "source": "", "must_refuse": true}
+{"id": "g014", "question": "Bolehkah baki cuti tahunan dibawa ke tahun hadapan?", "expected_answer": "Ya, baki cuti tahunan boleh diwarisi, tetapi tidak melebihi 90 hari tanpa kelulusan pengurusan atasan.", "source": "handbook-cuti.pdf", "must_refuse": false}
+{"id": "g015", "question": "Bolehkah hari tambahan cuti selepas 5 tahun berkhidmat dibawa ke tahun berikutnya?", "expected_answer": "Tidak, hari tambahan cuti tahunan tidak boleh dibawa ke tahun berikutnya.", "source": "handbook-cuti.pdf", "must_refuse": false}
+{"id": "g016", "question": "Adakah cuti tahunan perlukan kebenaran?", "expected_answer": "Ya, cuti tahunan tertakluk kepada kelulusan ketua jabatan.", "source": "handbook-cuti.pdf", "must_refuse": false}
+{"id": "g017", "question": "Berapa lama sijil doktor cuti sakit perlu dikirim dan kepada siapa?", "expected_answer": "Dalam tempoh 48 jam dari hari bertugas pertama selepas cuti sakit, diserahkan kepada ketua jabatan.", "source": "handbook-cuti.pdf", "must_refuse": false}
+{"id": "g018", "question": "Apa jadi jika klaim perjalanan dikemukakan selepas tempoh 14 hari?", "expected_answer": "Klaim akan ditolak melainkan dengan persetujuan khas pengurusan kewangan.", "source": "panduan-klaim-perjalanan.pdf", "must_refuse": false}
+{"id": "g019", "question": "Klaim perjalanan diproses oleh unit mana selepas kelulusan Ketua Jabatan?", "expected_answer": "Unit Kewangan memproses klaim selepas diluluskan Ketua Jabatan.", "source": "panduan-klaim-perjalanan.pdf", "must_refuse": false}
+{"id": "g020", "question": "Adakah perjalanan udara mengikut kadar tiket tertentu?", "expected_answer": "Ya, perjalanan udara tertakluk kepada kadar tiket ekonomi dan memerlukan kelulusan awal.", "source": "panduan-klaim-perjalanan.pdf", "must_refuse": false}
