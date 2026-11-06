@@ -37,6 +37,9 @@ def _write_pdf(path: str, blocks: list[list[str]]) -> None:
 
 
 def main() -> None:
+    # Direktori inbox wajib ada dulu (CI/host tidak selalu sudah punya —
+    # hanya container dev yang di-mount dari data/ yang sudah ada).
+    os.makedirs(INBOX, exist_ok=True)
     cuti = [
         [
             "DASAR CUTI KAKITANGAN",
